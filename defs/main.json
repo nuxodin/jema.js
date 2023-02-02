@@ -1,0 +1,47 @@
+{
+    "type": "object",
+    "properties": {
+        "int8": {
+            "type": "integer",
+            "min": 0,
+            "max": 255,
+            "multipleOf": 1
+        },
+        "uint8": {
+            "type": "integer",
+            "min": -128,
+            "max": 127,
+            "multipleOf": 1
+        },
+        "int16": {
+            "type": "integer",
+            "min": -32768,
+            "max": 32767,
+            "multipleOf": 1
+        },
+        "uint16": {
+            "type": "integer",
+            "min": 0,
+            "max": 65535,
+            "multipleOf": 1
+        },
+        "int32": {
+            "type": "integer",
+            "min": -2147483648,
+            "max": 2147483647,
+            "multipleOf": 1
+        },
+        "uint32": {
+            "type": "integer",
+            "min": 0,
+            "max": 4294967295,
+            "multipleOf": 1
+        },
+        "float32": {
+            "type": "number"
+        },
+        "float64": {
+            "type": "number"
+        }
+    }
+}

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Tests</title>
+    <meta name="viewport" content="width=device-width" />
+    <link rel="stylesheet" href="https://unpkg.com/mocha/mocha.css" />
+
+<body>
+
+<div id="mocha"></div>
+
+<script src="https://unpkg.com/chai/chai.js"></script>
+<script src="https://unpkg.com/mocha/mocha.js"></script>
+
+<script class="mocha-init">
+    mocha.setup('bdd');
+    mocha.checkLeaks();
+</script>
+
+<script type=module>
+import {Schema} from '../schema.js';
+
+
+describe('validate "type"', () => {
+
+
+    it('is number', () => {
+        const schema = new Schema({ type: 'number' });
+        chai.expect( schema.validate(3) ).to.be.equal(true);
+    });
+
+    it('is not number', () => {
+        const schema = new Schema({ type: 'number' });
+        chai.expect( schema.validate('1') ).to.be.equal(false);
+        chai.expect( schema.validate(Infinity) ).to.be.equal(false);
+    });
+
+    it('is integer', () => {
+        const schema = new Schema({ type: 'integer' });
+        chai.expect( schema.validate(3) ).to.be.equal(true);
+    });
+
+    it('is not integer', () => {
+        const schema = new Schema({ type: 'integer' });
+        chai.expect( schema.validate(3.1) ).to.be.equal(false);
+        chai.expect( schema.validate(null) ).to.be.equal(false);
+        chai.expect( schema.validate(NaN) ).to.be.equal(false);
+        chai.expect( schema.validate(Infinity) ).to.be.equal(false);
+    });
+
+    it('is string', () => {
+        const schema = new Schema({ type: 'string' });
+        chai.expect( schema.validate('a') ).to.be.equal(true);
+    });
+
+    it('is not string', () => {
+        const schema = new Schema({ type: 'string' });
+        chai.expect( schema.validate(3) ).to.be.equal(false);
+    });
+
+    it('is boolean', () => {
+        const schema = new Schema({ type: 'boolean' });
+        chai.expect( schema.validate(false) ).to.be.equal(true);
+    });
+
+    it('is not boolean', () => {
+        const schema = new Schema({ type: 'boolean' });
+        chai.expect( schema.validate(null) ).to.be.equal(false);
+    });
+
+    it('is null', () => {
+        const schema = new Schema({ type: 'null' });
+        chai.expect( schema.validate(null) ).to.be.equal(true);
+        chai.expect( schema.validate(undefined) ).to.be.equal(true);
+    });
+
+    it('is not null', () => {
+        const schema = new Schema({ type: 'null' });
+        chai.expect( schema.validate(NaN) ).to.be.equal(false);
+        chai.expect( schema.validate(0) ).to.be.equal(false);
+    });
+
+    it('is array', () => {
+        const schema = new Schema({ type: 'array' });
+        chai.expect( schema.validate([]) ).to.be.equal(true);
+    });
+
+    it('is not array', () => {
+        const schema = new Schema({ type: 'array' });
+        chai.expect( schema.validate({}) ).to.be.equal(false);
+    });
+
+    it('is object', () => {
+        const schema = new Schema({ type: 'object' });
+        chai.expect( schema.validate({}) ).to.be.equal(true);
+    });
+
+    it('is not object', () => {
+        const schema = new Schema({ type: 'object' });
+        chai.expect( schema.validate([]) ).to.be.equal(false);
+    });
+
+
+});
+
+describe('validate "string" related properties', () => {
+
+        it('is string with minLength', () => {
+            const schema = new Schema({ type: 'string', minLength: 3 });
+            chai.expect( schema.validate('abc') ).to.be.equal(true);
+        });
+
+        it('is not string with minLength', () => {
+            const schema = new Schema({ type: 'string', minLength: 3 });
+            chai.expect( schema.validate('ab') ).to.be.equal(false);
+        });
+
+        it('is string with maxLength', () => {
+            const schema = new Schema({ type: 'string', maxLength: 3 });
+            chai.expect( schema.validate('abc') ).to.be.equal(true);
+        });
+
+        it('is not string with maxLength', () => {
+            const schema = new Schema({ type: 'string', maxLength: 3 });
+            chai.expect( schema.validate('abcd') ).to.be.equal(false);
+        });
+
+        it('is string with pattern', () => {
+            const schema = new Schema({ type: 'string', pattern: '^[a-z]+$' });
+            chai.expect( schema.validate('abc') ).to.be.equal(true);
+        });
+
+        it('is not string with pattern', () => {
+            const schema = new Schema({ type: 'string', pattern: '^[a-z]+$' });
+            chai.expect( schema.validate('abc1') ).to.be.equal(false);
+        });
+
+        // format
+
+        it('is string with format "date"', () => {
+            const schema = new Schema({ type: 'string', format: 'date' });
+            chai.expect( schema.validate('2019-01-01') ).to.be.equal(true);
+        });
+
+        it('is with format "date-time"', () => {
+            const schema = new Schema({ type: 'string', format: 'date-time' });
+            chai.expect( schema.validate('2019-01-01T00:00:00') ).to.be.equal(true);
+        });
+
+        it('is with format "email"', () => {
+            const schema = new Schema({ type: 'string', format: 'email' });
+            chai.expect( schema.validate('x@example.com') ).to.be.equal(true);
+        });
+
+
+
+});
+
+
+
+
+
+</script>
+<script class="mocha-exec" type=module>
+    mocha.run();
+</script>
