@@ -1,6 +1,5 @@
 {
-    "type": "object",
-    "properties": {
+    "$defs": {
         "int8": {
             "type": "integer",
             "min": 0,

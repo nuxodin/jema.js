@@ -5,14 +5,17 @@
     <meta charset="utf-8" />
     <title>Tests</title>
     <meta name="viewport" content="width=device-width" />
-    <link rel="stylesheet" href="https://unpkg.com/mocha/mocha.css" />
+    <!--link rel="stylesheet" href="https://unpkg.com/mocha/mocha.css" /-->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mocha/mocha.min.css" />
 
 <body>
 
 <div id="mocha"></div>
 
-<script src="https://unpkg.com/chai/chai.js"></script>
-<script src="https://unpkg.com/mocha/mocha.js"></script>
+<!--script src="https://unpkg.com/chai/chai.js"></script>
+<script src="https://unpkg.com/mocha/mocha.js"></script-->
+<script src="https://cdn.jsdelivr.net/npm/chai/chai.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mocha/mocha.min.js"></script>
 
 <script class="mocha-init">
     mocha.setup('bdd');
@@ -105,7 +108,7 @@ describe('validate "type"', () => {
 
 });
 
-describe('validate "string" related properties', () => {
+describe('"string" related', () => {
 
         it('is string with minLength', () => {
             const schema = new Schema({ type: 'string', minLength: 3 });
@@ -138,29 +141,359 @@ describe('validate "string" related properties', () => {
         });
 
         // format
-
-        it('is string with format "date"', () => {
-            const schema = new Schema({ type: 'string', format: 'date' });
-            chai.expect( schema.validate('2019-01-01') ).to.be.equal(true);
-        });
-
-        it('is with format "date-time"', () => {
+        // "date-time": Date and time together, for example, 2018-11-13T20:20:39+00:00.
+        it('format "date-time"', () => {
             const schema = new Schema({ type: 'string', format: 'date-time' });
             chai.expect( schema.validate('2019-01-01T00:00:00') ).to.be.equal(true);
+            chai.expect( schema.validate('2019-01-01T00:00:00Z') ).to.be.equal(true);
+            chai.expect( schema.validate('2019-01-01T00:00:00+01:00') ).to.be.equal(true);
+            chai.expect( schema.validate('2019-01-01T00:00:00-01:00') ).to.be.equal(true);
+            chai.expect( schema.validate('2019-01-01T00:00:00+0100') ).to.be.equal(true);
+            chai.expect( schema.validate('2019-01-01T00:00:00-0100') ).to.be.equal(true);
+            // fails
+            chai.expect( schema.validate('2019-01-01T00:00:00+01') ).to.be.equal(false);
+            chai.expect( schema.validate('2019-01-01T00:00:00+010') ).to.be.equal(false);
+            chai.expect( schema.validate('2019-01-01T00:00:00+01000') ).to.be.equal(false);
         });
 
-        it('is with format "email"', () => {
+        // "time": New in draft 7 Time, for example, 20:20:39+00:00
+        it('format "time"', () => {
+            const schema = new Schema({ type: 'string', format: 'time' });
+            chai.expect( schema.validate('10:30:00+01:00') ).to.be.equal(true);
+            // fails
+            chai.expect( schema.validate('10:30:00+01') ).to.be.equal(false);
+        });
+        // "date": New in draft 7 Date, for example, 2018-11-13.
+        it('format "date"', () => {
+            const schema = new Schema({ type: 'string', format: 'date' });
+            chai.expect( schema.validate('2019-01-01') ).to.be.equal(true);
+            chai.expect( schema.validate('2019-01-01T00:00:00') ).to.be.equal(false);
+        });
+        // "duration": New in draft 2019-09 A duration as defined by the ISO 8601 ABNF for “duration”. For example, P3D expresses a duration of 3 days.
+        it('format "duration"', () => {
+            const schema = new Schema({ type: 'string', format: 'duration' });
+            chai.expect( schema.validate('P3D') ).to.be.equal(true);
+            chai.expect( schema.validate('P3D4H') ).to.be.equal(false);
+        });
+        // "email": Internet email address, see RFC 5321, section 4.1.2.
+        it('format "email"', () => {
             const schema = new Schema({ type: 'string', format: 'email' });
-            chai.expect( schema.validate('x@example.com') ).to.be.equal(true);
+            chai.expect( schema.validate('john.doe@example.com') ).to.be.equal(true);
+            chai.expect( schema.validate('x@hallo') ).to.be.equal(false);
         });
+        // "idn-email": New in draft 7 The internationalized form of an Internet email address, see RFC 6531.
+        it('format "idn-email"', () => {
+            const schema = new Schema({ type: 'string', format: 'idn-email' });
+            chai.expect( schema.validate('john.doe@öxample.com') ).to.be.equal(true);
+            chai.expect( schema.validate('john.doe@🤔.com') ).to.be.equal(true);
+            chai.expect( schema.validate('john.doe@a a.com') ).to.be.equal(false);
+        });
+        // "hostname": Internet host name, see RFC 1123, section 2.1.
+        it('format "hostname"', () => {
+            const schema = new Schema({ type: 'string', format: 'hostname' });
+            chai.expect( schema.validate('example.com') ).to.be.equal(true);
+            chai.expect( schema.validate('red') ).to.be.equal(false);
+        });
+        // "idn-hostname": New in draft 7 An internationalized Internet host name, see RFC5890, section 2.3.2.3.
 
+        // "ipv4": IPv4 address, according to dotted-quad ABNF syntax as defined in RFC 2673, section 3.2.
+        it('format "ipv4"', () => {
+            const schema = new Schema({ type: 'string', format: 'ipv4' });
+            chai.expect( schema.validate('1.1.1.1') ).to.be.equal(true);
+            chai.expect( schema.validate('a.2.1.2') ).to.be.equal(false);
+        });
+        // "ipv6": IPv6 address, as defined in RFC 2373, section 2.2.
+        it('format "ipv6"', () => {
+            const schema = new Schema({ type: 'string', format: 'ipv6' });
+            chai.expect( schema.validate('2001:0db8:85a3:0000:0000:8a2e:0370:7334') ).to.be.equal(true);
+            chai.expect( schema.validate('2001:db8:85a3:0:0:8a2e:370:7334') ).to.be.equal(true);
+            chai.expect( schema.validate('2001:db8:85a3::8a2e:370:7334') ).to.be.equal(true);
+            chai.expect( schema.validate('2001:db8:85a3:0:0:8A2E:370:7334:::::') ).to.be.equal(false);
+        });
+        // "uuid": New in draft 2019-09 A Universally Unique Identifier as defined by RFC 4122. Example: 3e4666bf-d5e5-4aa7-b8ce-cefe41c7568a
+        it('format "uuid"', () => {
+            const schema = new Schema({ type: 'string', format: 'uuid' });
+            chai.expect( schema.validate('3e4666bf-d5e5-4aa7-b8ce-cefe41c7568a') ).to.be.equal(true);
+            chai.expect( schema.validate('3e4666bf-d5e5-4aa7-b8ce-cefe41c7568') ).to.be.equal(false);
+        });
+        // "uri": A universal resource identifier (URI), according to RFC3986.
+        it('format "uri"', () => {
+            const schema = new Schema({ type: 'string', format: 'uri' });
+            chai.expect( schema.validate('https://example.com') ).to.be.equal(true);
+            chai.expect( schema.validate('abc') ).to.be.equal(false);
+        });
+        // "uri-reference": New in draft 6 A URI Reference (either a URI or a relative-reference), according to RFC3986, section 4.1.
+        it('format "uri-reference"', () => {
+            const schema = new Schema({ type: 'string', format: 'uri-reference' });
+            chai.expect( schema.validate('https://example.com') ).to.be.equal(true);
+            chai.expect( schema.validate('abc') ).to.be.equal(false);
+        });
+        // "iri": New in draft 7 The internationalized equivalent of a “uri”, according to RFC3987.
+        it('format "iri"', () => {
+            const schema = new Schema({ type: 'string', format: 'iri' });
+            chai.expect( schema.validate('https://öxample.com') ).to.be.equal(true);
+            chai.expect( schema.validate('abc') ).to.be.equal(false);
+        });
+        // "iri-reference": New in draft 7 The internationalized equivalent of a “uri-reference”, according to RFC3987
+        it('format "iri-reference"', () => {
+            const schema = new Schema({ type: 'string', format: 'iri-reference' });
+            chai.expect( schema.validate('https://öxample.com') ).to.be.equal(true);
+            chai.expect( schema.validate('abc') ).to.be.equal(false);
+        });
+});
+
+describe('Numeric types related', () => {
+    it('multipleOf', () => {
+        const schema = new Schema({ multipleOf: 3 });
+        chai.expect( schema.validate(3) ).to.be.equal(true);
+        chai.expect( schema.validate(6) ).to.be.equal(true);
+    });
+    it('not multipleOf', () => {
+        const schema = new Schema({ multipleOf: 3 });
+        chai.expect( schema.validate(4) ).to.be.equal(false);
+        chai.expect( schema.validate(3.1) ).to.be.equal(false);
+    });
+    it('minimum', () => {
+        const schema = new Schema({ minimum: 3 });
+        chai.expect( schema.validate(3) ).to.be.equal(true);
+        chai.expect( schema.validate(2.9) ).to.be.equal(false);
+    });
+    it('exclusiveMinimum', () => {
+        const schema = new Schema({ exclusiveMinimum: 3 });
+        chai.expect( schema.validate(3.1) ).to.be.equal(true);
+        chai.expect( schema.validate(3) ).to.be.equal(false);
+    });
+    it('maximum', () => {
+        const schema = new Schema({ maximum: 3 });
+        chai.expect( schema.validate(3) ).to.be.equal(true);
+        chai.expect( schema.validate(3.1) ).to.be.equal(false);
+    });
+    it('exclusiveMaximum', () => {
+        const schema = new Schema({ exclusiveMaximum: 3 });
+        chai.expect( schema.validate(2.9) ).to.be.equal(true);
+        chai.expect( schema.validate(3) ).to.be.equal(false);
+    });
+});
+
+
+describe('Object types related', () => {
+    it('properies', () => {
+        const schema = new Schema({
+            type: 'object',
+            properties: {
+                age: {type: 'integer'}
+            }
+        });
+        chai.expect( schema.validate({ age: 42 }) ).to.be.equal(true);
+        chai.expect( schema.validate({ age: '42' }) ).to.be.equal(false);
+    });
+
+    it('additionalProperties', () => {
+        const schema = new Schema({
+            type: 'object',
+            properties: {
+                name: {},
+                age: {}
+            },
+            additionalProperties: false
+        });
+        chai.expect( schema.validate({ name: 'John', age: 42 }) ).to.be.equal(true);
+        chai.expect( schema.validate({ foo: 'bar' }) ).to.be.equal(false);
+    });
+    it('additionalProperties with schema', () => {
+        const schema = new Schema({
+            type: 'object',
+            properties: {
+                age: { type: 'integer' }
+            },
+            additionalProperties: { type: 'string' }
+        });
+        chai.expect( schema.validate({ name: 'John', age: 42 }) ).to.be.equal(true);
+        chai.expect( schema.validate({ foo: 'bar' }) ).to.be.equal(true);
+        chai.expect( schema.validate({ foo: 42 }) ).to.be.equal(false);
+    });
+    it('patternProperties', () => {
+        const schema = new Schema({
+            type: 'object',
+            patternProperties: {
+                '^a': { type: 'string' }
+            }
+        });
+        chai.expect( schema.validate({ a: 'foo' }) ).to.be.equal(true);
+        chai.expect( schema.validate({ a: null }) ).to.be.equal(false);
+    });
+    it('propertyNames', () => {
+        const schema = new Schema({
+            type: 'object',
+            propertyNames: { pattern: '^a', maxLength: 3 }
+        });
+        chai.expect( schema.validate({ abc: 'foo' }) ).to.be.equal(true);
+        chai.expect( schema.validate({ abcd: 'foo' }) ).to.be.equal(false);
+        chai.expect( schema.validate({ bcd: 'foo' }) ).to.be.equal(false);
+    });
+    it('required', () => {
+        const schema = new Schema({
+            type: 'object',
+            properties: {
+                name: {},
+                age: {}
+            },
+            required: ['name']
+        });
+        chai.expect( schema.validate({ name: 'John', age: 42 }) ).to.be.equal(true);
+        chai.expect( schema.validate({ age: 42 }) ).to.be.equal(false);
+    });
+    it('minProperties', () => {
+        const schema = new Schema({
+            type: 'object',
+            minProperties: 2
+        });
+        chai.expect( schema.validate({ name: 'John', age: 42 }) ).to.be.equal(true);
+        chai.expect( schema.validate({ name: 'John' }) ).to.be.equal(false);
+    });
+    it('maxProperties', () => {
+        const schema = new Schema({
+            type: 'object',
+            maxProperties: 2
+        });
+        chai.expect( schema.validate({ name: 'John', age: 42 }) ).to.be.equal(true);
+        chai.expect( schema.validate({ name: 'John', age: 42, foo: 'bar' }) ).to.be.equal(false);
+    });
+
+});
+
+describe('Array related', () => {
+    it('items', () => {
+        const schema = new Schema({
+            type: 'array',
+            items: { type: 'integer' }
+        });
+        chai.expect( schema.validate([1]) ).to.be.equal(true);
+        chai.expect( schema.validate(['1']) ).to.be.equal(false);
+    });
+    it('prefixItems (tuple validation)', () => {
+        const schema = new Schema({
+            type: 'array',
+            prefixItems: [
+                { type: 'integer' },
+                { type: 'string' }
+            ]
+        });
+        chai.expect( schema.validate([1, '2']) ).to.be.equal(true);
+        chai.expect( schema.validate([1, 2]) ).to.be.equal(false);
+    });
+    it('contains', () => {
+        const schema = new Schema({
+            type: 'array',
+            contains: { type: 'integer' },
+        });
+        chai.expect( schema.validate(['1',2]) ).to.be.equal(true);
+        chai.expect( schema.validate(['1','2']) ).to.be.equal(false);
+    });
+    it('min-/maxContains', () => {
+        const schema = new Schema({
+            type: 'array',
+            contains: { type: 'integer' },
+            minContains: 2,
+            maxContains: 3,
+        });
+        chai.expect( schema.validate([1,2,3]) ).to.be.equal(true);
+        chai.expect( schema.validate(['1',2,'3',4]) ).to.be.equal(true);
+        chai.expect( schema.validate([1,'2']) ).to.be.equal(false);
+        chai.expect( schema.validate([1,2,3,4]) ).to.be.equal(false);
+    });
+    // uniqueItems
+    it('uniqueItems', () => {
+        const schema = new Schema({
+            type: 'array',
+            uniqueItems: true
+        });
+        chai.expect( schema.validate([1,2,3]) ).to.be.equal(true);
+        chai.expect( schema.validate([1,2,3,1]) ).to.be.equal(false);
+    });
 
 
 });
 
+// enum
+
+describe('Generic keywords', () => {
+    const schema = new Schema({ enum: ["red", null, 42] });
+
+    // enum
+    it('enum "red" allowed', () => {
+        chai.expect( schema.validate("red") ).to.be.equal(true);
+    });
+    it('enum null allowed', () => {
+        chai.expect( schema.validate(null) ).to.be.equal(true);
+    });
+    it('enum 42 allowed', () => {
+        chai.expect( schema.validate(42) ).to.be.equal(true);
+    });
+    it('enum "blue" not allowed', () => {
+        chai.expect( schema.validate("blue") ).to.be.equal(false);
+    });
+    it('enum 0 not allowed', () => {
+        chai.expect( schema.validate(0) ).to.be.equal(false);
+    });
+
+    // const
+    it('const "red" allowed', () => {
+        const schema = new Schema({ const: "red" });
+        chai.expect( schema.validate("red") ).to.be.equal(true);
+    });
+    it('const "blue" not allowed', () => {
+        const schema = new Schema({ const: "red" });
+        chai.expect( schema.validate("blue") ).to.be.equal(false);
+    });
+
+});
 
 
+describe('Generic keywords', () => {
+    it('allOf', () => {
+        const schema = new Schema({
+            "allOf": [
+                { "maxLength": 5 },
+                { "type": "string" },
+            ]
+        });
+        chai.expect( schema.validate('short') ).to.be.equal(true);
+        chai.expect( schema.validate('longer') ).to.be.equal(false);
+    });
+    it('anyOf', () => {
+        const schema = new Schema({
+            "anyOf": [
+                { "type": "string" },
+                { "type": "number" },
+            ]
+        });
+        chai.expect( schema.validate('short') ).to.be.equal(true);
+        chai.expect( schema.validate(42) ).to.be.equal(true);
+        chai.expect( schema.validate(true) ).to.be.equal(false);
+    });
 
+    it('oneOf', () => {
+        const schema = new Schema({
+            "oneOf": [
+                { "type": "number", "multipleOf": 5 },
+                { "type": "number", "multipleOf": 3 }
+            ]
+        });
+        chai.expect( schema.validate(10) ).to.be.equal(true);
+        chai.expect( schema.validate(9) ).to.be.equal(true);
+        chai.expect( schema.validate(2) ).to.be.equal(false);
+        chai.expect( schema.validate(15) ).to.be.equal(false);
+    });
+
+    it('not', () => {
+        const schema = new Schema({
+            "not": { "type": "number" }
+        });
+        chai.expect( schema.validate('string') ).to.be.equal(true);
+        chai.expect( schema.validate(42) ).to.be.equal(false);
+    });
+});
 
 </script>
 <script class="mocha-exec" type=module>
