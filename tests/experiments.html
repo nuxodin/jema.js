@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Experiments</title>
+    <meta name="viewport" content="width=device-width" />
+<body>
+
+
+<script type=module>
+import {Schema} from '../schema.js';
+
+
+
+const schema = new Schema({
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" },
+    "children": {
+      "type": "array",
+      "items": { "$ref": "#" }
+    }
+  }
+});
+schema.deref();
+
+
+</script>

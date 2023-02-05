@@ -1,4 +1,3 @@
-//import { mixin } from '../util/js.js';
 
 export class Schema {
     #schema;
@@ -13,7 +12,6 @@ export class Schema {
     }
     error(value) {
         for (const error of this.errors(value)) return error;
-        return false;
     }
 }
 
@@ -50,15 +48,17 @@ const validators = {
         if (type === 'object'  && typeof value === 'object' && value !== null && !Array.isArray(value)) return true;
         if (type === 'null'    && value == null) return true;
     },
-    min: (min, value) => value >= min,
-    max: (max, value) => value <= max,
-    minLength: (minLen, value) => value.length >= minLen,
-    maxLength: (maxLen, value) => value.length <= maxLen,
+
+    // number
     multipleOf: (propValue, value) => value % propValue === 0,
     minimum: (min, value) => value >= min,
     maximum: (max, value) => value <= max,
     exclusiveMinimum: (min, value) => value > min,
     exclusiveMaximum: (max, value) => value < max,
+
+    // string
+    minLength: (minLen, value) => value.length >= minLen,
+    maxLength: (maxLen, value) => value.length <= maxLen,
     pattern: (pattern, value) => {
             try { return new RegExp(pattern).test(value); } catch { return true; }
     },
@@ -84,6 +84,37 @@ const validators = {
             case 'regex': return /^\/[^\s]+$/.test(value);
         }
     },
+    // contentEncoding(encoding, value) {
+    //     switch (encoding) {
+    //         case 'base64': return /^[A-Za-z0-9+/=]+$/.test(value);
+    //         case 'ascii': return /^[\x00-\x7F]+$/.test(value); // extended ascii /^[\x00-\xFF]*$/ ?
+    //     }
+    // },
+    // contentMediaType(mediaType, value) {
+    //     switch (mediaType) {
+    //         case 'application/json':
+    //             try {
+    //                 JSON.parse(value);
+    //                 return true;
+    //             } catch { return false; }
+    //         case 'application/xml':
+    //             try {
+    //                 const parser = new DOMParser();
+    //                 parser.parseFromString(value, 'application/xml');
+    //                 return true;
+    //             } catch { return false; }
+    //         case 'text/html':
+    //             try {
+    //                 const parser = new DOMParser();
+    //                 parser.parseFromString(value, 'text/html');
+    //                 return true;
+    //             }
+    //             catch { return false; }
+    //         case 'text/plain':
+    //             return true;
+    //     }
+    // },
+
     // array
     *items(schema, value) {
         for (const item of value) {
@@ -119,9 +150,6 @@ const validators = {
         }
         return true;
     },
-
-
-
 
     // properties
     *additionalProperties(additionalProperties, value, schema){
@@ -200,7 +228,6 @@ const validators = {
             console.warn("deprecated (value: " + value + "))", schema);
         }
     },
-
     // todo: implement
     // *if(ifSchema, value, schema) {
     //     if (errors(value, ifSchema).next().done) {
@@ -230,6 +257,5 @@ const validators = {
     //         }
     //     }
     // },
-
 
 };
