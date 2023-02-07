@@ -2,39 +2,33 @@
     "$defs": {
         "int8": {
             "type": "integer",
-            "min": 0,
-            "max": 255,
-            "multipleOf": 1
+            "minimum": 0,
+            "maximum": 255
         },
         "uint8": {
             "type": "integer",
-            "min": -128,
-            "max": 127,
-            "multipleOf": 1
+            "minimum": -128,
+            "maximum": 127
         },
         "int16": {
             "type": "integer",
-            "min": -32768,
-            "max": 32767,
-            "multipleOf": 1
+            "minimum": -32768,
+            "maximum": 32767
         },
         "uint16": {
             "type": "integer",
-            "min": 0,
-            "max": 65535,
-            "multipleOf": 1
+            "minimum": 0,
+            "maximum": 65535
         },
         "int32": {
             "type": "integer",
-            "min": -2147483648,
-            "max": 2147483647,
-            "multipleOf": 1
+            "minimum": -2147483648,
+            "maximum": 2147483647
         },
         "uint32": {
             "type": "integer",
-            "min": 0,
-            "max": 4294967295,
-            "multipleOf": 1
+            "minimum": 0,
+            "maximum": 4294967295
         },
         "float32": {
             "type": "number"

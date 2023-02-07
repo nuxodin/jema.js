@@ -2,20 +2,20 @@
 export class Schema {
     #schema;
     constructor(schema){
-        this.#schema = schema;
+        this.schema = schema;
     }
     validate(value) {
         return !this.error(value);
     }
     *errors (value){
-        return yield* errors(value, this.#schema);
+        return yield* errors(value, this.schema);
     }
     error(value) {
         for (const error of this.errors(value)) return error;
     }
 }
 
-function *errors (value, schema){
+export function *errors (value, schema){
     delete schema.$comment; // remove comments to ensure they are not used by the user of the schema
     for (const prop of Object.keys(schema)) {
         const validator = validators[prop];
@@ -84,12 +84,18 @@ const validators = {
             case 'regex': return /^\/[^\s]+$/.test(value);
         }
     },
-    // contentEncoding(encoding, value) {
-    //     switch (encoding) {
-    //         case 'base64': return /^[A-Za-z0-9+/=]+$/.test(value);
-    //         case 'ascii': return /^[\x00-\x7F]+$/.test(value); // extended ascii /^[\x00-\xFF]*$/ ?
-    //     }
-    // },
+    contentEncoding(encoding, value) {
+        switch (encoding) {
+            // 7bit, 8bit, binary, quoted-printable, base16, base32, and base64
+            case '7bit': return /^[\x00-\x7F]+$/.test(value); // 0-127 (ascii)
+            case '8bit': return /^[\x00-\xFF]+$/.test(value); // 0-255 (extended ascii)
+            case 'binary': return /^[\x00-\xFF]+$/.test(value); // 0-255
+            case 'quoted-printable': return /^[\x09\x20-\x3C\x3E-\x7E]+$/.test(value); // 9, 32-60, 62-126
+            case 'base16': return /^[0-9a-fA-F]+$/.test(value); // 0-9, a-f, A-F
+            case 'base32': return /^[0-9a-vA-V]+$/.test(value); // 0-9, a-v, A-V
+            case 'base64': return /^[0-9a-zA-Z+/=]+$/.test(value); // 0-9, a-z, A-Z, +, /
+        }
+    },
     // contentMediaType(mediaType, value) {
     //     switch (mediaType) {
     //         case 'application/json':
@@ -224,9 +230,8 @@ const validators = {
         }
     },
     deprecated(deprecated, value, schema) {
-        if (deprecated) {
-            console.warn("deprecated (value: " + value + "))", schema);
-        }
+        if (deprecated) console.error("deprecated (value: " + value + "))", schema);
+        return true;
     },
     // todo: implement
     // *if(ifSchema, value, schema) {
