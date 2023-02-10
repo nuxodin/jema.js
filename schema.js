@@ -1,6 +1,4 @@
-
 export class Schema {
-    #schema;
     constructor(schema){
         this.schema = schema;
     }
@@ -22,11 +20,13 @@ export function *errors (value, schema){
         if (!validator) {
             console.log(`Validator "${prop}" not found`);
         } else {
-            if (validator instanceof GeneratorFunction)
+            if (validator instanceof GeneratorFunction) {
                 yield* validator(schema[prop], value, schema);
-            else {
+            } else {
                 const valide = validator(schema[prop], value, schema);
-                if (!valide) yield `"${value}" does not match ${prop}:${schema[prop]}`;
+                if (!valide) {
+                    yield `"${value}" does not match ${prop}:${schema[prop]}`;
+                }
             }
         }
     }

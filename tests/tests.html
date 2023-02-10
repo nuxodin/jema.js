@@ -495,6 +495,45 @@ describe('Generic keywords', () => {
     });
 });
 
+describe('deeper', () => {
+    it('deeper', () => {
+        const schema = new Schema({
+            type: 'object',
+            properties: {
+                name: { type: 'string' },
+                age: { type: 'integer' },
+                address: {
+                    type: 'object',
+                    properties: {
+                        street: { type: 'string' },
+                        city: { type: 'string' },
+                        zip: { type: 'integer' }
+                    }
+                }
+            }
+        });
+        chai.expect( schema.validate({
+            name: 'John',
+            age: 42,
+            address: {
+                street: 'Main Street',
+                city: 'New York',
+                zip: 10001
+            }
+        }) ).to.be.equal(true);
+        chai.expect( schema.validate({
+            name: 'John',
+            age: 42,
+            address: {
+                street: 'Main Street',
+                city: 'New York',
+                zip: '10001'
+            }
+        }) ).to.be.equal(false);
+    });
+});
+
+
 </script>
 <script class="mocha-exec" type=module>
     mocha.run();

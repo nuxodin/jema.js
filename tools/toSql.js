@@ -23,7 +23,7 @@ function toFieldsSQL(schema) {
     }
     return sql;
 }
-function toFieldDefinition(schema) {
+export function toFieldDefinition(schema) {
     // produces somethin like the following from a jsonschema
     // eg. "INT(11) NOT NULL DEFAULT '0'";
     // or "VARCHAR(255) NOT NULL DEFAULT '' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT 'A comment'"
@@ -86,6 +86,56 @@ const mapType = {
     'array':'json',
     'object':'json',
 }
+
+
+/*
+// how its done in php:
+
+$data['type']          = $data['type']          ?? 'varchar';
+$data['length']        = $data['length']        ?? false;
+$data['special']       = $data['special']       ?? '';
+$data['collate']       = $data['collate']       ?? false;
+$data['null']          = $data['null']          ?? false;
+$data['autoincrement'] = $data['autoincrement'] ?? false;
+$data['default']       = $data['default']       ?? false;
+
+$data['type']    = trim(strtoupper($data['type']));
+$data['special'] = trim(strtoupper($data['special']));
+
+$vs = ['VARCHAR','TINYINT','TEXT','DATE','SMALLINT','MEDIUMINT','INT','BIGINT','FLOAT','DOUBLE','DECIMAL','DATETIME','TIMESTAMP','TIME','YEAR','CHAR','TINYBLOB','TINYTEXT','BLOB','MEDIUMBLOB','MEDIUMTEXT','LONGBLOB','LONGTEXT','BOOL','BINARY'];
+if (array_search($data['type'], $vs) === false) throw new \Exception('field type "'.$data['type'].'" not allowed');
+
+$vs = ['','BINARY','UNSIGNED','UNSIGNED ZEROFILL','ON UPDATE CURRENT_TIMESTAMP'];
+if (array_search($data['special'], $vs) === false) throw new \Exception('field special "'.$data['special'].'" not allowed');
+
+$length = $data['length'] ? '('.$data['length'].')' : '';
+
+if (in_array($data['type'], ['DATE','DATETIME','FLOAT','TEXT','TINYTEXT','MEDIUMTEXT','LONGTEXT'])) $length = '';
+if ($data['type'] === 'VARCHAR' && !$length)             $length = '(191)';
+if ($data['type'] === 'DECIMAL' && $data['length'] > 65) $length = '(12,8)';
+
+//$default = $data['autoincrement'] ? 'AUTO_INCREMENT' : ($data['default'] ? "DEFAULT ".D()->quote($data['default']) : ""); // todo: bad: D() is used
+
+$default = '';
+$defaultKeys = ['NULL'=>1, 'CURRENT_TIMESTAMP'=>1, 'CURRENT_TIMESTAMP()'=>1, 'NOW()'=>1, 'LOCALTIME'=>1, 'LOCALTIME()'=>1, 'LOCALTIMESTAMP'=>1, 'LOCALTIMESTAMP()'=>1];
+if ($data['autoincrement']) {
+    $default = 'AUTO_INCREMENT';
+} elseif($data['default'] !== false) {
+    $default = "DEFAULT ".(isset($defaultKeys[$data['default']]) ? $data['default'] : D()->quote($data['default'])); // todo: bad: D() is used
+}
+
+if (dbField::$numTypes[$data['type']]??0) $data['collate'] = false;
+if (dbField::$dateTypes[$data['type']]??0) $data['collate'] = false;
+$collate = '';
+if ($data['collate']) {
+    $characterSet = explode('_',$data['collate'])[0];
+    $collate = "CHARACTER SET ".$characterSet." COLLATE ".$data['collate']." "; // todo: bad: D() is used
+}
+
+// ALTER TABLE `file` CHANGE `text` `text` VARCHAR(22222) CHARACTER SET swe7 COLLATE swe7_swedish_ci NULL DEFAULT 'x';
+$str = " ".$data['type'].$length." ".$data['special']." ".$collate." ".($data['null']?'NULL':'NOT NULL')." ".$default;
+return $str;
+*/
 
 
 
