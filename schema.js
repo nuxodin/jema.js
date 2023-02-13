@@ -1,3 +1,4 @@
+
 export class Schema {
     constructor(schema){
         this.schema = schema;
@@ -10,6 +11,53 @@ export class Schema {
     }
     error(value) {
         for (const error of this.errors(value)) return error;
+    }
+    async deref() {
+        await this.#loadRefs();
+        this.#_deref(this.schema);
+    }
+    #_deref(schema) {
+        for (const [prop, value] of Object.entries(schema)) {
+            if (prop === '$ref') {
+                let subSchema;
+                if (value[0] !== '#') {
+                    const url = value.replace(/#.*/, '');
+                    const foraignSchema = this.foraignSchemas.get(url).schema;
+                    subSchema = walk(foraignSchema, value.replace(/.*#/, ''));
+                } else {
+                    subSchema = walk(this.schema, value.replace(/.*#/, ''));
+                }
+                schema.$ref = subSchema;
+            } else if (typeof value === 'object') {
+                this.#_deref(schema[prop]);
+            }
+        }
+    }
+    async #loadRefs(){
+        const promises = this.#_loadRefs(this.schema);
+        const schemasArray = await Promise.all(promises.values()).catch(console.error);
+        const keySchemas = new Map();
+        for (const [key] of promises) {
+            const schema = schemasArray.shift();
+            keySchemas.set(key, schema);
+        }
+        this.foraignSchemas = keySchemas;
+    }
+    #_loadRefs(schema) {
+        const refs = new Map();
+        for (const [prop, value] of Object.entries(schema)) {
+            if (prop === '$ref') {
+                if (value[0] !== '#') {
+                    const url = value.replace(/#.*/, '');
+                    refs.set(url, loadSchema(url));
+                }
+            } else if (typeof value === 'object') {
+                for (const [url, promise] of this.#_loadRefs(schema[prop])) {
+                    refs.set(url, promise);
+                }
+            }
+        }
+        return refs;
     }
 }
 
@@ -33,10 +81,14 @@ export function *errors (value, schema){
 }
 
 
-const GeneratorFunction = (function*(){}).constructor;
 
 
 const validators = {
+
+    *$ref(subSchema, value) {
+        return yield* errors(value, subSchema);
+    },
+
     enum: (allowed, value) => allowed.includes(value),
     const: (constant, value) => constant === value,
     type: (type, value) => {
@@ -96,30 +148,6 @@ const validators = {
             case 'base64': return /^[0-9a-zA-Z+/=]+$/.test(value); // 0-9, a-z, A-Z, +, /
         }
     },
-    // contentMediaType(mediaType, value) {
-    //     switch (mediaType) {
-    //         case 'application/json':
-    //             try {
-    //                 JSON.parse(value);
-    //                 return true;
-    //             } catch { return false; }
-    //         case 'application/xml':
-    //             try {
-    //                 const parser = new DOMParser();
-    //                 parser.parseFromString(value, 'application/xml');
-    //                 return true;
-    //             } catch { return false; }
-    //         case 'text/html':
-    //             try {
-    //                 const parser = new DOMParser();
-    //                 parser.parseFromString(value, 'text/html');
-    //                 return true;
-    //             }
-    //             catch { return false; }
-    //         case 'text/plain':
-    //             return true;
-    //     }
-    // },
 
     // array
     *items(schema, value) {
@@ -264,3 +292,41 @@ const validators = {
     // },
 
 };
+
+
+/* helpers */
+const GeneratorFunction = (function*(){}).constructor;
+
+const AllSchemas = new Map();
+function loadSchema(url) {
+    if (AllSchemas.has(url)) {
+        return Promise.resolve(AllSchemas.get(url));
+    } else {
+        const promise = fetch(url).then(res => res.json()).then(async data => {
+            const schema = new Schema(data);
+            await schema.deref();
+            return schema;
+        });
+        AllSchemas.set(url, promise);
+        return promise;
+    }
+}
+
+function walk(schema, path) {
+    const parts = path.split('/').filter(Boolean);
+//    console.log(schema, path)
+    for (const part of parts) {
+        schema = schema[part];
+    }
+    return schema;
+}
+function deepMixin(target, source) {
+    for (const [prop, value] of Object.entries(source)) {
+        if (typeof value === 'object') {
+            if (!target[prop]) target[prop] = {};
+            deepMixin(target[prop], value);
+        } else {
+            target[prop] = value;
+        }
+    }
+}

@@ -9,95 +9,9 @@
 
 
 <script type=module>
-//import {Schema} from '../schema.js';
+import {Schema} from '../schema.js';
 
-
-
-const symbol = {
-    bild: Symbol('bild'),
-    root: Symbol('root'),
-    parent: Symbol('parent'),
-    resolveRefs: Symbol('resolveRefs'),
-    path: Symbol('path'),
-    key: Symbol('key'),
-};
-
-const SchemaProto = {
-    [symbol.bild](){
-        for (const [key, value] of Object.entries(this)) {
-            if (value instanceof Object) {
-                Object.setPrototypeOf(value, SchemaProto);
-                value[symbol.bild]();
-                value[symbol.parent] = this;
-                value[symbol.key] = key;
-            }
-        }
-    },
-    [symbol.root](){
-        if (!this[symbol.parent]) return this;
-        return this[symbol.parent][symbol.root]();
-    },
-    path: function() { // zzz
-        if (!this[symbol.parent]) return '';
-        return this[symbol.parent].path() + '/' + this[symbol.key];
-    },
-    [symbol.path](){
-        if (!this[symbol.parent]) return '';
-        return this[symbol.parent][symbol.path]() + '/' + this[symbol.key];
-    },
-    [symbol.resolveRefs](){
-        for (const [key, value] of Object.entries(this)) {
-            if (key === '$ref') {
-                const ref = value.split('/');
-                let schema = this[symbol.root]();
-                for (const part of ref) {
-                    if (part === '#') continue;
-                    schema = schema[part];
-                }
-                Object.setPrototypeOf(this, schema);
-            }
-        }
-        if ('properties' in this) {
-            for (const [key, child] of Object.entries(this.properties)) {
-                child[symbol.resolveRefs]();
-            }
-        }
-    }
-};
-Object.setPrototypeOf(SchemaProto, null);
-Object.defineProperties(SchemaProto, {
-    type: {
-        get() {
-            if ('properties' in this) return 'object';
-            if ('minProperties' in this) return 'object';
-            if ('maxProperties' in this) return 'object';
-            if ('required' in this) return 'object';
-            if ('additionalProperties' in this) return 'object';
-            if ('propertyNames' in this) return 'object';
-            //if ('dependencies' in this) return 'object';
-            if ('patternProperties' in this) return 'object';
-            if ('items' in this) return 'array';
-            if ('minItems' in this) return 'array';
-            if ('maxItems' in this) return 'array';
-            if ('uniqueItems' in this) return 'array';
-            if ('contains' in this) return 'array';
-            if ('minimum' in this) return 'number';
-            if ('maximum' in this) return 'number';
-            if ('exclusiveMinimum' in this) return 'number';
-            if ('exclusiveMaximum' in this) return 'number';
-            if ('multipleOf' in this) return 'number';
-            if ('minLength' in this) return 'string';
-            if ('maxLength' in this) return 'string';
-            if ('pattern' in this) return 'string';
-            if ('format' in this) return 'string';
-            return undefined;
-        },
-    },
-});
-
-
-
-const demoschema = {
+const schema = new Schema({
     $schema: "http://json-schema.org/draft-07/schema#",
     title: "geoline",
     type: "object",
@@ -105,6 +19,11 @@ const demoschema = {
         from: {
             description: "starting coordinate",
             $ref: "#/definitions/coordinate",
+            properties: {
+                altitude: {
+                    type: "number"
+                }
+            }
         },
         to: {
             description: "ending coordinate",
@@ -115,7 +34,7 @@ const demoschema = {
         coordinate: {
             properties: {
                 latitude: {
-                    type: "number"
+                    $ref: 'https://cdn.jsdelivr.net/gh/nuxodin/schema.js@main/defs/main.json#/$defs/uint8',
                 },
                 longitude: {
                     type: "number"
@@ -124,12 +43,174 @@ const demoschema = {
             required: ["latitude", "longitude"]
         },
     }
-};
+});
 
-const schema = Object.setPrototypeOf(demoschema, SchemaProto);
-schema[symbol.bild]();
-schema[symbol.resolveRefs]();
-console.log(schema);
+await schema.deref();
+console.log(schema.schema)
+
+
+
+
+// self reference
+const schema2 = new Schema({
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" },
+    "children": {
+      "type": "array",
+      "items": { "$ref": "#" }
+    }
+  }
+});
+
+await schema2.deref();
+console.log(schema2)
+
+const es = schema2.errors({
+    name: 'root',
+    children: [{
+            name: 'child1',
+            children: [],
+        },{
+            name: 'child2',
+            children: [{
+                    name: 'child2.1',
+                    children: 'should fail',
+                },{
+                    name: 'child2.2',
+                    children: [],
+                },
+            ],
+        },
+    ]
+});
+
+console.log(es)
+console.log([...es])
+
+
+// const symbol = {
+//     bild: Symbol('bild'),
+//     root: Symbol('root'),
+//     parent: Symbol('parent'),
+//     resolveRefs: Symbol('resolveRefs'),
+//     path: Symbol('path'),
+//     key: Symbol('key'),
+// };
+
+// const SchemaProto = {
+//     [symbol.bild](){
+//         for (const [key, value] of Object.entries(this)) {
+//             if (value instanceof Object) {
+//                 Object.setPrototypeOf(value, SchemaProto);
+//                 value[symbol.parent] = this;
+//                 value[symbol.key] = key;
+//                 value[symbol.bild]();
+//             }
+//         }
+//     },
+//     [symbol.root](){
+//         if (!this[symbol.parent]) return this;
+//         return this[symbol.parent][symbol.root]();
+//     },
+//     path: function() { // zzz
+//         if (!this[symbol.parent]) return '';
+//         return this[symbol.parent].path() + '/' + this[symbol.key];
+//     },
+//     [symbol.path](){
+//         if (!this[symbol.parent]) return '';
+//         return this[symbol.parent][symbol.path]() + '/' + this[symbol.key];
+//     },
+//     [symbol.resolveRefs](){
+//         for (const [key, value] of Object.entries(this)) {
+//             if (key === '$ref') {
+//                 const ref = value.split('/');
+//                 let schema = this[symbol.root]();
+//                 for (const part of ref) {
+//                     if (part === '#') continue;
+//                     schema = schema[part];
+//                 }
+//                 // Object.setPrototypeOf(this, schema); all keys will be overwritten if it has owns. but it need to mixin the referrenced schema
+//             }
+//         }
+//         if ('properties' in this) {
+//             for (const [key, child] of Object.entries(this.properties)) {
+//                 child[symbol.resolveRefs]();
+//             }
+//         }
+//     }
+// };
+// Object.setPrototypeOf(SchemaProto, null);
+// Object.defineProperties(SchemaProto, {
+//     type: {
+//         get() {
+//             if ('properties' in this) return 'object';
+//             if ('minProperties' in this) return 'object';
+//             if ('maxProperties' in this) return 'object';
+//             if ('required' in this) return 'object';
+//             if ('additionalProperties' in this) return 'object';
+//             if ('propertyNames' in this) return 'object';
+//             //if ('dependencies' in this) return 'object';
+//             if ('patternProperties' in this) return 'object';
+//             if ('items' in this) return 'array';
+//             if ('minItems' in this) return 'array';
+//             if ('maxItems' in this) return 'array';
+//             if ('uniqueItems' in this) return 'array';
+//             if ('contains' in this) return 'array';
+//             if ('minimum' in this) return 'number';
+//             if ('maximum' in this) return 'number';
+//             if ('exclusiveMinimum' in this) return 'number';
+//             if ('exclusiveMaximum' in this) return 'number';
+//             if ('multipleOf' in this) return 'number';
+//             if ('minLength' in this) return 'string';
+//             if ('maxLength' in this) return 'string';
+//             if ('pattern' in this) return 'string';
+//             if ('format' in this) return 'string';
+//             return undefined;
+//         },
+//     },
+// });
+
+
+
+// const demoschema = {
+//     $schema: "http://json-schema.org/draft-07/schema#",
+//     title: "geoline",
+//     type: "object",
+//     properties: {
+//         from: {
+//             description: "starting coordinate",
+//             $ref: "#/definitions/coordinate",
+//             properties: {
+//                 altitude: {
+//                     type: "number"
+//                 }
+//             }
+//         },
+//         to: {
+//             description: "ending coordinate",
+//             $ref: "#/definitions/coordinate"
+//         },
+//     },
+//     definitions: {
+//         coordinate: {
+//             properties: {
+//                 latitude: {
+//                     type: "number"
+//                 },
+//                 longitude: {
+//                     type: "number"
+//                 }
+//             },
+//             required: ["latitude", "longitude"]
+//         },
+//     }
+// };
+
+// const schema = Object.setPrototypeOf(demoschema, SchemaProto);
+// schema[symbol.bild]();
+// schema[symbol.resolveRefs]();
+// console.log(schema);
 
 
 </script>

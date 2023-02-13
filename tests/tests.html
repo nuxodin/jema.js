@@ -370,6 +370,7 @@ describe('Array related', () => {
         });
         chai.expect( schema.validate([1]) ).to.be.equal(true);
         chai.expect( schema.validate(['1']) ).to.be.equal(false);
+        chai.expect( schema.validate({a:1}) ).to.be.equal(false);
     });
     it('prefixItems (tuple validation)', () => {
         const schema = new Schema({

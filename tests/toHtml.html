@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Experiments</title>
+    <meta name="viewport" content="width=device-width" />
+<body>
+
+<script type=module>
+import {Schema} from '../schema.js';
+import {toHtml} from '../tools/toHtml.js';
+
+
+const schema =  {
+    type: 'number',
+    minimum: 0,
+    maximum: 255,
+    multipleOf: 2,
+    default: 8,
+}
+myForm.innerHTML += toHtml(schema);
+
+const schema2 =  {
+    type: 'string',
+    minLength: 3,
+    maxLength: 10,
+    pattern: '^[a-z]+$',
+    default: 'hello',
+}
+myForm.innerHTML += toHtml(schema2);
+
+
+const schema3 =  {
+  "type": "object",
+  "description": "A person, company, organization, or place",
+  "properties": {
+    "given-name": {
+        title: 'First Name',
+        description: 'First Name of the person',
+        "type": "string",
+    },
+    "family-name": { "type": "string" },
+    // "children": {
+    //   "type": "array",
+    //   "items": { "$ref": "#" }
+    // }
+  }
+}
+
+myForm.innerHTML += toHtml(schema3);
+
+
+</script>
+
+<form>
+    <div id=myForm>
+    </div>
+    <button> Submit </button>
+</form>
+
+<style>
+    :not(form,button):invalid {
+        outline: 2px solid red;
+    }
+    :not(form,button):valid {
+        outline: 2px solid green;
+    }
+</style>
