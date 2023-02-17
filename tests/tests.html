@@ -105,6 +105,12 @@ describe('validate "type"', () => {
         chai.expect( schema.validate([]) ).to.be.equal(false);
     });
 
+    it('multiple types', () => {
+        const schema = new Schema({ type: ['number', 'string'] });
+        chai.expect( schema.validate(3) ).to.be.equal(true);
+        chai.expect( schema.validate('a') ).to.be.equal(true);
+        chai.expect( schema.validate([]) ).to.be.equal(false);
+    });
 
 });
 
@@ -369,6 +375,7 @@ describe('Array related', () => {
             items: { type: 'integer' }
         });
         chai.expect( schema.validate([1]) ).to.be.equal(true);
+        chai.expect( schema.validate('string') ).to.be.equal(false);
         chai.expect( schema.validate(['1']) ).to.be.equal(false);
         chai.expect( schema.validate({a:1}) ).to.be.equal(false);
     });
@@ -531,6 +538,49 @@ describe('deeper', () => {
                 zip: '10001'
             }
         }) ).to.be.equal(false);
+    });
+});
+
+describe('$ref', () => {
+    it('simple', async () => {
+        const schema = new Schema({
+            items: {
+                $ref: '#/$def/positiveInteger'
+            },
+            $def: {
+                positiveInteger: {
+                    type: 'integer',
+                    minimum: 0
+                }
+            }
+        });
+        await schema.deref();
+        chai.expect( schema.validate([1,2,3]) ).to.be.equal(true);
+        chai.expect( schema.validate([-42]) ).to.be.equal(false);
+    });
+    it('non existing referenced schema should throw', async () => {
+        const schema = new Schema({
+            items: {
+                $ref: '#/nonexistent'
+            },
+        });
+        try {
+            await schema.deref();
+            chai.expect(false).to.be.equal(true);
+        } catch (e) {
+            chai.expect(true).to.be.equal(true);
+        }
+    });
+    it('recursive', async () => {
+        const schema = new Schema({
+            oneOf: [
+                { type: 'array', items: { $ref: '#' } },
+                { type: 'integer' }
+            ],
+        });
+        await schema.deref();
+        chai.expect( schema.validate([1,[1,2]]) ).to.be.equal(true);
+        chai.expect( schema.validate([1,[1,'2']]) ).to.be.equal(false);
     });
 });
 

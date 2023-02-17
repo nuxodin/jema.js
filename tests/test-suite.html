@@ -1,0 +1,167 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Tests</title>
+    <meta name="viewport" content="width=device-width" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mocha/mocha.min.css" />
+
+<body>
+
+<div id="mocha"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chai/chai.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mocha/mocha.min.js"></script>
+
+<script class="mocha-init">
+    mocha.setup('bdd');
+    mocha.checkLeaks();
+</script>
+
+<script type=module>
+import {Schema} from '../schema.js';
+
+const files = [
+    'additionalProperties.json',
+    'allOf.json',
+    //'anchor.json',
+    'anyOf.json',
+    'boolean_schema.json',
+    'const.json',
+    'contains.json',
+    'content.json',
+    'default.json',
+    //'defs.json',
+    //'dependentRequired.json',
+    //'dependentSchemas.json',
+    //'dynamicRef.json',
+    'enum.json',
+    'exclusiveMaximum.json',
+    'exclusiveMinimum.json',
+    'format.json',
+    //'id.json',
+    //'if-then-else.json',
+    'infinite-loop-detection.json',
+    'items.json',
+    'maxContains.json',
+    'maximum.json',
+    'maxItems.json',
+    'maxLength.json',
+    'maxProperties.json',
+    'minContains.json',
+    'minimum.json',
+    'minItems.json',
+    'minLength.json',
+    'minProperties.json',
+    'multipleOf.json',
+    'not.json',
+    'oneOf.json',
+    'pattern.json',
+    'patternProperties.json',
+    'prefixItems.json',
+    'properties.json',
+    'propertyNames.json',
+    //'ref.json',
+    //'refRemote.json',
+    'required.json',
+    'type.json',
+    //'unevaluatedItems.json',
+    //'unevaluatedProperties.json',
+    'uniqueItems.json',
+    //'unknownKeyword.json',
+    //'vocabulary.json',
+
+
+    'optional/bignum.json',
+    'optional/cross-draft.json',
+    'optional/dependencies-compatibility.json',
+    'optional/ecmascript-regex.json',
+    'optional/float-overflow.json',
+    'optional/format-assertion.json',
+    'optional/no-schema.json',
+    'optional/non-bmp-regex.json',
+    'optional/refOfUnknownKeyword.json',
+
+
+
+    'optional/format/date.json',
+    'optional/format/date-time.json',
+    'optional/format/duration.json',
+    'optional/format/email.json',
+    'optional/format/hostname.json',
+    'optional/format/idn-email.json',
+    'optional/format/idn-hostname.json',
+    'optional/format/ipv4.json',
+    'optional/format/ipv6.json',
+    'optional/format/iri.json',
+    'optional/format/iri-reference.json',
+    'optional/format/json-pointer.json',
+    'optional/format/regex.json',
+    'optional/format/relative-json-pointer.json',
+    'optional/format/time.json',
+    'optional/format/unknown.json',
+    'optional/format/uri.json',
+    'optional/format/uri-reference.json',
+    'optional/format/uri-template.json',
+    'optional/format/uuid.json',
+
+];
+
+
+
+const promises = new Map();
+
+for (const file of files) {
+    promises.set(
+        file,
+        fetch('https://cdn.jsdelivr.net/gh/json-schema-org/JSON-Schema-Test-Suite@main/tests/draft2020-12/' + file).then(response => response.json())
+    );
+}
+Promise.all(promises.values()).then( async (result) => {
+    for (const [index, data] of result.entries()) {
+        const file = files[index];
+        for (const test of data) {
+
+            const schema = new Schema(test.schema);
+            try {
+                await schema.deref();
+            } catch (e) {
+                console.log('deref error ', file, '------------------------');
+                console.log('schema', test.schema);
+                console.log('error', e);
+            }
+
+            describe(test.description, () => {
+                for (const subtest of test.tests) {
+                    it(subtest.description, () => {
+
+                        const result = schema.validate(subtest.data);
+
+                        if (result !== subtest.valid) {
+                            console.log('------------------------', file, '------------------------');
+                            console.log(subtest.description);
+                            console.log('data', subtest.data);
+                            console.log('schema', test.schema);
+                            console.log('expected', subtest.valid);
+                            const errors = [...schema.errors(subtest.data)];
+                            console.log('errors', errors);
+                        }
+                        chai.expect( result ).to.be.equal(subtest.valid);
+                    });
+                }
+            });
+        }
+    }
+
+
+    mocha.run();
+
+});
+
+</script>
+<script class="mocha-exec" type=module>
+    //mocha.run();
+</script>

@@ -1,4 +1,9 @@
 
+// how refs collisions handled?
+// i found this info:
+// https://json-schema.org/draft/2020-12/json-schema-core.html#section-7.7.1.1
+
+
 export class Schema {
     constructor(schema){
         this.schema = schema;
@@ -17,6 +22,7 @@ export class Schema {
         this.#_deref(this.schema);
     }
     #_deref(schema) {
+        if (!schema) return;
         for (const [prop, value] of Object.entries(schema)) {
             if (prop === '$ref') {
                 let subSchema;
@@ -38,13 +44,14 @@ export class Schema {
         const schemasArray = await Promise.all(promises.values()).catch(console.error);
         const keySchemas = new Map();
         for (const [key] of promises) {
-            const schema = schemasArray.shift();
-            keySchemas.set(key, schema);
+            keySchemas.set(key, schemasArray.shift());
         }
         this.foraignSchemas = keySchemas;
     }
     #_loadRefs(schema) {
         const refs = new Map();
+        if (!schema) return refs;
+
         for (const [prop, value] of Object.entries(schema)) {
             if (prop === '$ref') {
                 if (value[0] !== '#') {
@@ -63,17 +70,41 @@ export class Schema {
 
 export function *errors (value, schema){
     delete schema.$comment; // remove comments to ensure they are not used by the user of the schema
+
+    if (schema === false) {
+        yield 'Schema is false';
+        return;
+    }
+    if (schema === true) {
+        return;
+    }
+
     for (const prop of Object.keys(schema)) {
         const validator = validators[prop];
         if (!validator) {
-            console.log(`Validator "${prop}" not found`);
+            if (prop === '$defs') continue; // ignore $def
+            if (prop === '$schema') continue; // ignore $def
+//            console.log(`Validator "${prop}" not found`);
         } else {
+
+            let type = typeof value;
+            //if (type === 'number' && Number.isInteger(value)) type = 'integer';
+            if (type === 'object' && value === null) type = 'null';
+            if (type === 'object' && Array.isArray(value)) type = 'array';
+
+            if (relevantFor[prop] && !relevantFor[prop].includes(type)) continue;
+
             if (validator instanceof GeneratorFunction) {
                 yield* validator(schema[prop], value, schema);
             } else {
                 const valide = validator(schema[prop], value, schema);
                 if (!valide) {
-                    yield `"${value}" does not match ${prop}:${schema[prop]}`;
+                    //yield `"${1}" does not match ${prop}:${schema}`;
+                    try {
+                        yield `"${value}" does not match ${prop}:${schema[prop]}`;
+                    } catch {
+                        yield `"object does not match ${prop}:${schema[prop]}`;
+                    }
                 }
             }
         }
@@ -81,7 +112,31 @@ export function *errors (value, schema){
 }
 
 
-
+const relevantFor = {
+    multipleOf: ['number'],
+    minimum: ['number'],
+    maximum: ['number'],
+    exclusiveMinimum: ['number'],
+    exclusiveMaximum: ['number'],
+    minLength: ['string'],
+    maxLength: ['string'],
+    pattern: ['string'],
+    format: ['string'],
+    items: ['array'],
+    additionalItems: ['array'],
+    minItems: ['array'],
+    maxItems: ['array'],
+    uniqueItems: ['array'],
+    contains: ['array'],
+    minProperties: ['object'],
+    maxProperties: ['object'],
+    required: ['object'],
+    properties: ['object'],
+    patternProperties: ['object'],
+    additionalProperties: ['object'],
+    //dependencies: ['object'],
+    propertyNames: ['object'],
+}
 
 const validators = {
 
@@ -89,9 +144,20 @@ const validators = {
         return yield* errors(value, subSchema);
     },
 
-    enum: (allowed, value) => allowed.includes(value),
-    const: (constant, value) => constant === value,
+    enum: (allowed, value) => {
+        for (const a of allowed) if (deepEqual(a, value)) return true;
+        //allowed.includes(value)
+    },
+    const: (constant, value) => {
+        //const uValue = typeof value === 'object' ? JSON.stringify(value) : value;
+        //const uConst = typeof constant === 'object' ? JSON.stringify(constant) : constant;
+        //return uValue === uConst;
+        return deepEqual(value, constant);
+    },
     type: (type, value) => {
+        if (Array.isArray(type)) {
+            for (const t of type) if (validators.type(t, value)) return true;
+        }
         if (type === 'integer' && Number.isInteger(value)) return true;
         if (type === 'number'  && typeof value === 'number' && isFinite(value)) return true;
         if (type === 'boolean' && typeof value === 'boolean') return true;
@@ -102,15 +168,17 @@ const validators = {
     },
 
     // number
-    multipleOf: (propValue, value) => value % propValue === 0,
+    //multipleOf: (mOf, value) => value % mOf === 0,
+    multipleOf: (mOf, value) => Number.isInteger(value / mOf),
+
     minimum: (min, value) => value >= min,
     maximum: (max, value) => value <= max,
     exclusiveMinimum: (min, value) => value > min,
     exclusiveMaximum: (max, value) => value < max,
 
     // string
-    minLength: (minLen, value) => value.length >= minLen,
-    maxLength: (maxLen, value) => value.length <= maxLen,
+    minLength: (minLen, value) => [...value].length >= minLen,
+    maxLength: (maxLen, value) => [...value].length <= maxLen,
     pattern: (pattern, value) => {
             try { return new RegExp(pattern).test(value); } catch { return true; }
     },
@@ -135,34 +203,43 @@ const validators = {
             case 'relative-json-pointer': return /^\/[^\s]+$/.test(value);
             case 'regex': return /^\/[^\s]+$/.test(value);
         }
+        return true;
     },
     contentEncoding(encoding, value) {
-        switch (encoding) {
-            // 7bit, 8bit, binary, quoted-printable, base16, base32, and base64
-            case '7bit': return /^[\x00-\x7F]+$/.test(value); // 0-127 (ascii)
-            case '8bit': return /^[\x00-\xFF]+$/.test(value); // 0-255 (extended ascii)
-            case 'binary': return /^[\x00-\xFF]+$/.test(value); // 0-255
-            case 'quoted-printable': return /^[\x09\x20-\x3C\x3E-\x7E]+$/.test(value); // 9, 32-60, 62-126
-            case 'base16': return /^[0-9a-fA-F]+$/.test(value); // 0-9, a-f, A-F
-            case 'base32': return /^[0-9a-vA-V]+$/.test(value); // 0-9, a-v, A-V
-            case 'base64': return /^[0-9a-zA-Z+/=]+$/.test(value); // 0-9, a-z, A-Z, +, /
-        }
+        return true;
+        // switch (encoding) {
+        //     // 7bit, 8bit, binary, quoted-printable, base16, base32, and base64
+        //     case '7bit': return /^[\x00-\x7F]+$/.test(value); // 0-127 (ascii)
+        //     case '8bit': return /^[\x00-\xFF]+$/.test(value); // 0-255 (extended ascii)
+        //     case 'binary': return /^[\x00-\xFF]+$/.test(value); // 0-255
+        //     case 'quoted-printable': return /^[\x09\x20-\x3C\x3E-\x7E]+$/.test(value); // 9, 32-60, 62-126
+        //     case 'base16': return /^[0-9a-fA-F]+$/.test(value); // 0-9, a-f, A-F
+        //     case 'base32': return /^[0-9a-vA-V]+$/.test(value); // 0-9, a-v, A-V
+        //     case 'base64': return /^[0-9a-zA-Z+/=]+$/.test(value); // 0-9, a-z, A-Z, +, /
+        // }
     },
 
     // array
     *items(schema, value) {
+        if (schema === false) {
+            if (value.length > 0) yield "must be empty";
+            return;
+        }
+
         for (const item of value) {
             yield* errors(item, schema);
         }
     },
     *prefixItems(prefixItems, value) {
+        let i = 0;
         for (const schema of prefixItems) {
-            yield* errors(value.shift(), schema);
+            if (value[i] === undefined) return;
+            yield* errors(value[i++], schema);
         }
     },
     *contains(contains, value, schema) {
-        const minContains = schema.minContains || 1;
-        const maxContains = schema.maxContains || Infinity;
+        const minContains = schema.minContains ?? 1;
+        const maxContains = schema.maxContains ?? Infinity;
         let num = 0;
         for (const item of value) {
             if (!errors(item, contains).next().done) continue; // does not match, ignore
@@ -178,8 +255,9 @@ const validators = {
         if (uniqueItems) {
             const set = new Set();
             for (const item of value) {
-                if (set.has(item)) return false;
-                set.add(item);
+                const uValue = typeof item === 'object' && item != null ? 'hack'+JSON.stringify(item) : item; // todo: order of keys are not relevant, but JSON.stringify does not sort them
+                if (set.has(uValue)) return false;
+                set.add(uValue);
             }
         }
         return true;
@@ -187,7 +265,7 @@ const validators = {
 
     // properties
     *additionalProperties(additionalProperties, value, schema){
-        const schemaProperties = Object.keys(schema.properties);
+        const schemaProperties = Object.keys(schema.properties??{});
         for (const prop of Object.keys(value)) {
             if (!schemaProperties.includes(prop)) {
                 if (additionalProperties === false) {
@@ -216,31 +294,6 @@ const validators = {
             const propSchema = properties[prop];
             if (propSchema) yield* errors(value[prop], propSchema);
         }
-        //return true;
-    },
-    *allOf(allOf, value) {
-        for (const subSchema of allOf) {
-            yield* errors(value, subSchema);
-        }
-    },
-    anyOf(anyOf, value) {
-        for (const subSchema of anyOf) {
-            if (errors(value, subSchema).next().done) return true;
-        }
-        return false;
-    },
-    oneOf(oneOf, value) {
-        let fails = 0;
-        for (const subSchema of oneOf) {
-            fails += [...errors(value, subSchema)].length ? 1 : 0;
-            if (fails > 1) return false;
-        }
-        return fails === 1;
-    },
-    not(subschema, value) {
-        for (const _error of errors(value, subschema)) {
-            return true;
-        }
     },
     *patternProperties(patternProperties, value) {
         const patterns = Object.entries(patternProperties);
@@ -254,7 +307,34 @@ const validators = {
     },
     *propertyNames(propertyNames, value) {
         for (const prop of Object.keys(value)) {
+            if (propertyNames===false) yield "property name '" + prop + "' is not allowed";
             yield* errors(prop, propertyNames);
+        }
+    },
+
+    // combiners
+    *allOf(allOf, value) {
+        for (const subSchema of allOf) {
+            yield* errors(value, subSchema);
+        }
+    },
+    anyOf(anyOf, value) {
+        for (const subSchema of anyOf) {
+            if (errors(value, subSchema).next().done) return true;
+        }
+        return false;
+    },
+    oneOf(oneOf, value) {
+        let pass = 0;
+        for (const subSchema of oneOf) {
+            pass += [...errors(value, subSchema)].length ? 0 : 1;
+            if (pass > 1) return false;
+        }
+        return pass === 1;
+    },
+    not(subschema, value) {
+        for (const _error of errors(value, subschema)) {
+            return true;
         }
     },
     deprecated(deprecated, value, schema) {
@@ -314,11 +394,16 @@ function loadSchema(url) {
 
 function walk(schema, path) {
     const parts = path.split('/').filter(Boolean);
-//    console.log(schema, path)
+    let subSchema = schema;
     for (const part of parts) {
-        schema = schema[part];
+        subSchema = subSchema[part];
+        if (!subSchema) {
+            const msg = "path "+path+" not found in schema";
+            console.warn(msg, schema);
+            throw new Error(msg);
+        }
     }
-    return schema;
+    return subSchema;
 }
 function deepMixin(target, source) {
     for (const [prop, value] of Object.entries(source)) {
@@ -329,4 +414,30 @@ function deepMixin(target, source) {
             target[prop] = value;
         }
     }
+}
+
+
+
+function deepEqual(a, b) {
+    if (a === b) return true;
+    if (a == null && b != null) return false;
+    if (a != null && b == null) return false;
+    if (typeof a === 'object' && typeof b === 'object') {
+        if (Array.isArray(a) && Array.isArray(b)) {
+            if (a.length !== b.length) return false;
+            for (let i = 0; i < a.length; i++) {
+                if (!deepEqual(a[i], b[i])) return false;
+            }
+            return true;
+        } else {
+            const aKeys = Object.keys(a);
+            const bKeys = Object.keys(b);
+            if (aKeys.length !== bKeys.length) return false;
+            for (const key of aKeys) {
+                if (!deepEqual(a[key], b[key])) return false;
+            }
+            return true;
+        }
+    }
+    return false;
 }

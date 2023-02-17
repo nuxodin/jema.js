@@ -62,10 +62,8 @@ const schema2 = new Schema({
     }
   }
 });
-
 await schema2.deref();
 console.log(schema2)
-
 const es = schema2.errors({
     name: 'root',
     children: [{
@@ -77,15 +75,12 @@ const es = schema2.errors({
                     name: 'child2.1',
                     children: 'should fail',
                 },{
-                    name: 'child2.2',
-                    children: {},
+                    name: 99,
                 },
             ],
         },
     ]
 });
-
-console.log(es)
 console.log([...es])
 
 
