@@ -79,6 +79,10 @@ export function *errors (value, schema){
         return;
     }
 
+    let type = typeof value;
+    if (value === null) type = 'null';
+    if (Array.isArray(value)) type = 'array';
+
     for (const prop of Object.keys(schema)) {
         const validator = validators[prop];
         if (!validator) {
@@ -87,11 +91,6 @@ export function *errors (value, schema){
 //            console.log(`Validator "${prop}" not found`);
         } else {
 
-            let type = typeof value;
-            //if (type === 'number' && Number.isInteger(value)) type = 'integer';
-            if (type === 'object' && value === null) type = 'null';
-            if (type === 'object' && Array.isArray(value)) type = 'array';
-
             if (relevantFor[prop] && !relevantFor[prop].includes(type)) continue;
 
             if (validator instanceof GeneratorFunction) {
@@ -99,9 +98,8 @@ export function *errors (value, schema){
             } else {
                 const valide = validator(schema[prop], value, schema);
                 if (!valide) {
-                    //yield `"${1}" does not match ${prop}:${schema}`;
                     try {
-                        yield `"${value}" does not match ${prop}:${schema[prop]}`;
+                        yield `"${value}" does not match ${prop}:${schema[prop]}`; // value to sting can fail
                     } catch {
                         yield `"object does not match ${prop}:${schema[prop]}`;
                     }
@@ -113,7 +111,7 @@ export function *errors (value, schema){
 
 
 const relevantFor = {
-    multipleOf: ['number'],
+    multipleOf: ['number'], // integer is also a number
     minimum: ['number'],
     maximum: ['number'],
     exclusiveMinimum: ['number'],
@@ -146,12 +144,8 @@ const validators = {
 
     enum: (allowed, value) => {
         for (const a of allowed) if (deepEqual(a, value)) return true;
-        //allowed.includes(value)
     },
     const: (constant, value) => {
-        //const uValue = typeof value === 'object' ? JSON.stringify(value) : value;
-        //const uConst = typeof constant === 'object' ? JSON.stringify(constant) : constant;
-        //return uValue === uConst;
         return deepEqual(value, constant);
     },
     type: (type, value) => {
@@ -184,24 +178,49 @@ const validators = {
     },
     format: (format, value) => {
         switch (format) {
-            case 'date-time': return !isNaN(Date.parse(value));
-            case 'date': return /^\d{4}-\d{2}-\d{2}$/.test(value);
-            case 'time': return /^\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(value);
-            case 'duration': return /^P(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$/.test(value);
+            //case 'date-time': return !isNaN(Date.parse(value.toUpperCase()));
+            case 'date-time': return validDateTime(value);
+            case 'date': return validDate(value);
+            case 'time': return validTime(value);
+            case 'duration': return /^P(\d+Y|\d+M|\d+D|\d+W|T(\d+H|\d+M|\d+S))+$/.test(value); // TODD: use Temporal when available
             case 'email': return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
             case 'idn-email': return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
             case 'hostname': return /^[^\s@]+\.[^\s@]+$/.test(value);
             case 'ipv4': return /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value);
             case 'ipv6': return /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/gi.test(value);
-            case 'uri': return /^https?:\/\/[^\s]+$/.test(value);
-            case 'uri-reference': return /^https?:\/\/[^\s]+$/.test(value);
-            case 'uri-template': return /^https?:\/\/[^\s]+$/.test(value);
-            case 'iri': return /^https?:\/\/[^\s]+$/.test(value);
+            //case 'uri': return /^https?:\/\/[^\s]+$/.test(value);
+            case 'uri':
+            case 'iri':
+                try {
+                    new URL(value);
+                    return true;
+                } catch { return false; }
+            case 'uri-reference':
+                try {
+                    new URL(value, 'http://x.y');
+                    return true;
+                } catch { return false; }
+            case 'uri-template': return /^([^\{\}]|\{[^\{\}]+\})*$/.test(value);
+            case 'idn-hostname': {
+                try {
+                    const url = new URL('http://'+value);
+                    //console.log({value, hostname: url.hostname, equal: url.hostname === value});
+                    //return true;
+                    //return url.hostname === value;
+                    if (url.hostname !== value) return false;
+                } catch { return false; }
+                return isValidIDN(value);
+            }
             case 'iri-reference': return /^https?:\/\/[^\s]+$/.test(value);
             case 'uuid': return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(value);
             case 'json-pointer': return /^\/[^\s]+$/.test(value);
             case 'relative-json-pointer': return /^\/[^\s]+$/.test(value);
-            case 'regex': return /^\/[^\s]+$/.test(value);
+            case 'regex': {
+                try {
+                    new RegExp(value);
+                    return true;
+                } catch { return false; }
+            }
         }
         return true;
     },
@@ -221,11 +240,10 @@ const validators = {
 
     // array
     *items(schema, value) {
-        if (schema === false) {
+        if (schema === false) { // TODO: ok?
             if (value.length > 0) yield "must be empty";
             return;
         }
-
         for (const item of value) {
             yield* errors(item, schema);
         }
@@ -237,8 +255,9 @@ const validators = {
             yield* errors(value[i++], schema);
         }
     },
+    //additionalItems: (additionalItems, value, schema) => {}, // todo
     *contains(contains, value, schema) {
-        const minContains = schema.minContains ?? 1;
+        const minContains = schema.minContains ?? 0;
         const maxContains = schema.maxContains ?? Infinity;
         let num = 0;
         for (const item of value) {
@@ -264,6 +283,28 @@ const validators = {
     },
 
     // properties
+    *properties(properties, value) {
+        for (const prop of Object.keys(value)) {
+            const propSchema = properties[prop];
+            if (propSchema) yield* errors(value[prop], propSchema);
+        }
+    },
+    *patternProperties(patternProperties, value) {
+        const patterns = Object.entries(patternProperties);
+        for (const prop of Object.keys(value)) {
+            for (const [pattern, subSchema] of patterns) {
+                if (new RegExp(pattern).test(prop)) {
+                    yield* errors(value[prop], subSchema);
+                }
+            }
+        }
+    },
+    *propertyNames(propertyNames, value) {
+        for (const prop of Object.keys(value)) {
+            if (propertyNames===false) yield "property name '" + prop + "' is not allowed";
+            yield* errors(prop, propertyNames);
+        }
+    },
     *additionalProperties(additionalProperties, value, schema){
         const schemaProperties = Object.keys(schema.properties??{});
         for (const prop of Object.keys(value)) {
@@ -289,28 +330,7 @@ const validators = {
     maxProperties: (maxProperties, value) => {
         return Object.keys(value).length <= maxProperties;
     },
-    *properties(properties, value) {
-        for (const prop of Object.keys(value)) {
-            const propSchema = properties[prop];
-            if (propSchema) yield* errors(value[prop], propSchema);
-        }
-    },
-    *patternProperties(patternProperties, value) {
-        const patterns = Object.entries(patternProperties);
-        for (const prop of Object.keys(value)) {
-            for (const [pattern, subSchema] of patterns) {
-                if (new RegExp(pattern).test(prop)) {
-                    yield* errors(value[prop], subSchema);
-                }
-            }
-        }
-    },
-    *propertyNames(propertyNames, value) {
-        for (const prop of Object.keys(value)) {
-            if (propertyNames===false) yield "property name '" + prop + "' is not allowed";
-            yield* errors(prop, propertyNames);
-        }
-    },
+
 
     // combiners
     *allOf(allOf, value) {
@@ -440,4 +460,98 @@ function deepEqual(a, b) {
         }
     }
     return false;
+}
+
+
+// const validDateTime = (value) => {
+//     const x = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([\+-]\d{2}):(\d{2}))$/i);
+//     if (!x) return false;
+//     const [year, month, day, hours, minutes, seconds, offsetHours, offsetMinutes] = x.slice(1);
+//     if (month > 12) return false;
+//     if (day > 28) {
+//         const maxDays = new Date(year, month, 0).getDate();
+//         if (day > maxDays) return false;
+//     }
+//     if (hours > 23) return false;
+//     if (minutes > 59) return false;
+//     if (seconds > 60) return false;
+//     if (offsetHours!=null) {
+//         if (offsetHours > 23) return false;
+//         if (offsetHours < -23) return false;
+//         if (offsetMinutes === undefined) return false;
+//         if (offsetMinutes > 59) return false;
+
+//     }
+//     if (seconds == '60') {
+//         const minutesUtf = minutes*1 + -(offsetMinutes || 0);
+//         const hoursUtf   = hours*1 + -(offsetHours || 0);
+//         console.log({minutesUtf, hoursUtf})
+//         // if (minutes != '59') return false;
+//         // if (hours != '23') return false;
+//         if (minutesUtf !== 59 && minutesUtf !== -1) return false;
+//         if (hoursUtf !== 23 && hoursUtf !== 0) return false;
+//     }
+//     return true;
+// }
+function validDate(value) {
+    const x = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!x) return false;
+    const [year, month, day] = x.slice(1);
+    if (month > 12) return false;
+    if (day > 31) return false;
+    if (day > 28) {
+        const maxDays = new Date(year, month, 0).getDate();
+        if (day > maxDays) return false;
+    }
+    return true;
+}
+function validTime(value) {
+    const x = value.match(/^(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([\+-]\d{2}):(\d{2}))$/i);
+    if (!x) return false;
+    const [hours, minutes, seconds, offsetHours, offsetMinutes] = x.slice(1);
+    if (hours > 23) return false;
+    if (minutes > 59) return false;
+    if (seconds > 60) return false;
+    if (offsetHours!=null) {
+        if (offsetHours > 23) return false;
+        if (offsetHours < -23) return false;
+        if (offsetMinutes === undefined) return false;
+        if (offsetMinutes > 59) return false;
+    }
+    if (seconds == '60') {
+        const minutesUtf = minutes*1 + -(offsetMinutes || 0);
+        const hoursUtf   = hours*1 + -(offsetHours || 0);
+        if (minutesUtf !== 59 && minutesUtf !== -1) return false;
+        if (hoursUtf !== 23 && hoursUtf !== 0) return false;
+    }
+    return true;
+}
+function validDateTime(value) {
+    const [date, time] = value.split(/T/i);
+    if (!validDate(date)) return false;
+    if (!validTime(time)) return false;
+    return true;
+}
+
+
+
+function isValidIDN(hostname) {
+    const regex = /^([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}$/i;
+    // Check if the input hostname matches the basic DNS hostname pattern
+    if (!regex.test(hostname)) return false;
+    try {
+        // Convert the hostname to its Punycode representation
+        const punycodeHostname = encodeURI(hostname)
+        .replace(/%[0-9A-F]{2}/g, c => String.fromCharCode('0x' + c.substr(1)))
+        .split('.')
+        .map(label => {
+            return label.match(/^xn--/) ? punycode.decode(label.slice(4)) : label;
+        })
+        .join('.');
+        // Check if the Punycode representation of the hostname is valid
+        if (!regex.test(punycodeHostname)) return false;
+    } catch {
+        return false;
+    }
+    return true;
 }
