@@ -75,9 +75,7 @@ export function *errors (value, schema){
         yield 'Schema is false';
         return;
     }
-    if (schema === true) {
-        return;
-    }
+    if (schema === true) return;
 
     let type = typeof value;
     if (value === null) type = 'null';
@@ -88,7 +86,7 @@ export function *errors (value, schema){
         if (!validator) {
             if (prop === '$defs') continue; // ignore $def
             if (prop === '$schema') continue; // ignore $def
-//            console.log(`Validator "${prop}" not found`);
+            // console.log(`Validator "${prop}" not found`);
         } else {
 
             if (relevantFor[prop] && !relevantFor[prop].includes(type)) continue;
@@ -120,6 +118,7 @@ const relevantFor = {
     maxLength: ['string'],
     pattern: ['string'],
     format: ['string'],
+    contentEncoding: ['string'],
     items: ['array'],
     additionalItems: ['array'],
     minItems: ['array'],
@@ -162,9 +161,7 @@ const validators = {
     },
 
     // number
-    //multipleOf: (mOf, value) => value % mOf === 0,
-    multipleOf: (mOf, value) => Number.isInteger(value / mOf),
-
+    multipleOf: (mOf, value) => Number.isInteger(value / mOf), // value % mOf === 0 is not working for small numbers
     minimum: (min, value) => value >= min,
     maximum: (max, value) => value <= max,
     exclusiveMinimum: (min, value) => value > min,
@@ -174,11 +171,10 @@ const validators = {
     minLength: (minLen, value) => [...value].length >= minLen,
     maxLength: (maxLen, value) => [...value].length <= maxLen,
     pattern: (pattern, value) => {
-            try { return new RegExp(pattern).test(value); } catch { return true; }
+        return new RegExp(pattern).test(value);
     },
     format: (format, value) => {
         switch (format) {
-            //case 'date-time': return !isNaN(Date.parse(value.toUpperCase()));
             case 'date-time': return validDateTime(value);
             case 'date': return validDate(value);
             case 'time': return validTime(value);
@@ -188,25 +184,18 @@ const validators = {
             case 'hostname': return /^[^\s@]+\.[^\s@]+$/.test(value);
             case 'ipv4': return /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value);
             case 'ipv6': return /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/gi.test(value);
-            //case 'uri': return /^https?:\/\/[^\s]+$/.test(value);
             case 'uri':
-            case 'iri':
-                try {
-                    new URL(value);
-                    return true;
-                } catch { return false; }
+            case 'iri': {
+                try { new URL(value); return true; }
+                catch { return false; }
+            }
             case 'uri-reference':
-                try {
-                    new URL(value, 'http://x.y');
-                    return true;
-                } catch { return false; }
+                try { new URL(value, 'http://x.y'); return true; }
+                catch { return false; }
             case 'uri-template': return /^([^\{\}]|\{[^\{\}]+\})*$/.test(value);
             case 'idn-hostname': {
                 try {
                     const url = new URL('http://'+value);
-                    //console.log({value, hostname: url.hostname, equal: url.hostname === value});
-                    //return true;
-                    //return url.hostname === value;
                     if (url.hostname !== value) return false;
                 } catch { return false; }
                 return isValidIDN(value);
@@ -216,15 +205,14 @@ const validators = {
             case 'json-pointer': return /^\/[^\s]+$/.test(value);
             case 'relative-json-pointer': return /^\/[^\s]+$/.test(value);
             case 'regex': {
-                try {
-                    new RegExp(value);
-                    return true;
-                } catch { return false; }
+                try { new RegExp(value); return true; }
+                catch { return false; }
             }
+            default: console.log('jsons chema unknown format: '+format);
         }
         return true;
     },
-    contentEncoding(encoding, value) {
+    contentEncoding(/*encoding, value*/) {
         return true;
         // switch (encoding) {
         //     // 7bit, 8bit, binary, quoted-printable, base16, base32, and base64
@@ -240,10 +228,6 @@ const validators = {
 
     // array
     *items(schema, value) {
-        if (schema === false) { // TODO: ok?
-            if (value.length > 0) yield "must be empty";
-            return;
-        }
         for (const item of value) {
             yield* errors(item, schema);
         }
@@ -257,7 +241,7 @@ const validators = {
     },
     //additionalItems: (additionalItems, value, schema) => {}, // todo
     *contains(contains, value, schema) {
-        const minContains = schema.minContains ?? 0;
+        const minContains = schema.minContains ?? 1;
         const maxContains = schema.maxContains ?? Infinity;
         let num = 0;
         for (const item of value) {
@@ -286,7 +270,7 @@ const validators = {
     *properties(properties, value) {
         for (const prop of Object.keys(value)) {
             const propSchema = properties[prop];
-            if (propSchema) yield* errors(value[prop], propSchema);
+            if (propSchema!=null) yield* errors(value[prop], propSchema);
         }
     },
     *patternProperties(patternProperties, value) {
@@ -362,23 +346,16 @@ const validators = {
         return true;
     },
     // todo: implement
-    // *if(ifSchema, value, schema) {
-    //     if (errors(value, ifSchema).next().done) {
-    //         yield* errors(value, schema.then);
-    //     } else {
-    //         yield* errors(value, schema.else);
-    //     }
-    // },
-    // *then(thenSchema, value, schema) {
-    //     if (errors(value, schema.if).next().done) {
-    //         yield* errors(value, thenSchema);
-    //     }
-    // },
-    // *else(elseSchema, value, schema) {
-    //     if (!errors(value, schema.if).next().done) {
-    //         yield* errors(value, elseSchema);
-    //     }
-    // },
+    *if(ifSchema, value, schema) {
+        if (!schema.then && !schema.else) return; // ignore if no "then" or "else"
+        if (errors(value, ifSchema).next().done) {
+            if (!schema.then) return; // ignore if no "then"
+            yield* errors(value, schema.then);
+        } else {
+            if (!schema.else) return; // ignore if no "else"
+            yield* errors(value, schema.else);
+        }
+    },
     // *dependentRequired(dependentRequired, value) {
     //     for (const prop of Object.keys(value)) {
     //         if (dependentRequired[prop]) {
@@ -425,16 +402,16 @@ function walk(schema, path) {
     }
     return subSchema;
 }
-function deepMixin(target, source) {
-    for (const [prop, value] of Object.entries(source)) {
-        if (typeof value === 'object') {
-            if (!target[prop]) target[prop] = {};
-            deepMixin(target[prop], value);
-        } else {
-            target[prop] = value;
-        }
-    }
-}
+// function deepMixin(target, source) {
+//     for (const [prop, value] of Object.entries(source)) {
+//         if (typeof value === 'object') {
+//             if (!target[prop]) target[prop] = {};
+//             deepMixin(target[prop], value);
+//         } else {
+//             target[prop] = value;
+//         }
+//     }
+// }
 
 
 
@@ -462,37 +439,6 @@ function deepEqual(a, b) {
     return false;
 }
 
-
-// const validDateTime = (value) => {
-//     const x = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([\+-]\d{2}):(\d{2}))$/i);
-//     if (!x) return false;
-//     const [year, month, day, hours, minutes, seconds, offsetHours, offsetMinutes] = x.slice(1);
-//     if (month > 12) return false;
-//     if (day > 28) {
-//         const maxDays = new Date(year, month, 0).getDate();
-//         if (day > maxDays) return false;
-//     }
-//     if (hours > 23) return false;
-//     if (minutes > 59) return false;
-//     if (seconds > 60) return false;
-//     if (offsetHours!=null) {
-//         if (offsetHours > 23) return false;
-//         if (offsetHours < -23) return false;
-//         if (offsetMinutes === undefined) return false;
-//         if (offsetMinutes > 59) return false;
-
-//     }
-//     if (seconds == '60') {
-//         const minutesUtf = minutes*1 + -(offsetMinutes || 0);
-//         const hoursUtf   = hours*1 + -(offsetHours || 0);
-//         console.log({minutesUtf, hoursUtf})
-//         // if (minutes != '59') return false;
-//         // if (hours != '23') return false;
-//         if (minutesUtf !== 59 && minutesUtf !== -1) return false;
-//         if (hoursUtf !== 23 && hoursUtf !== 0) return false;
-//     }
-//     return true;
-// }
 function validDate(value) {
     const x = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!x) return false;
