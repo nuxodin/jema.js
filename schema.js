@@ -1,8 +1,6 @@
-
 // how refs collisions handled?
 // i found this info:
 // https://json-schema.org/draft/2020-12/json-schema-core.html#section-7.7.1.1
-
 
 export class Schema {
     constructor(schema){
@@ -69,7 +67,6 @@ export class Schema {
 }
 
 export function *errors (value, schema){
-    delete schema.$comment; // remove comments to ensure they are not used by the user of the schema
 
     if (schema === false) {
         yield 'Schema is false';
@@ -77,9 +74,23 @@ export function *errors (value, schema){
     }
     if (schema === true) return;
 
+    if (schema === undefined) {
+        throw new Error('Schema is undefined');
+    }
+
+
+    if (schema.$id) {
+        //AllSchemas.set(url, Promise.resolve(this));
+    }
+
+
+
+    delete schema.$comment; // remove comments to ensure they are not used by the user of the schema
+
     let type = typeof value;
     if (value === null) type = 'null';
     if (Array.isArray(value)) type = 'array';
+
 
     for (const prop of Object.keys(schema)) {
         const validator = validators[prop];
@@ -105,6 +116,11 @@ export function *errors (value, schema){
             }
         }
     }
+
+    if (typeValidators[type]) {
+        yield* typeValidators[type](schema, value);
+    }
+
 }
 
 
@@ -133,6 +149,94 @@ const relevantFor = {
     additionalProperties: ['object'],
     //dependencies: ['object'],
     propertyNames: ['object'],
+}
+
+
+const typeValidators = {
+    *object(schema, value) {
+        const keys = Object.keys(value);
+        if ('minProperties' in schema) {
+            if (keys.length < schema.minProperties) yield "Object has less properties than minProperties";
+        }
+        if ('maxProperties' in schema) {
+            if (keys.length > schema.maxProperties) yield "Object has more properties than maxProperties";
+        }
+        if ('required' in schema) {
+            for (const prop of schema.required) {
+                if (!keys.includes(prop)) yield `Object is missing required property "${prop}"`;
+            }
+        }
+        const patternProperties = schema.patternProperties && Object.entries(schema.patternProperties);
+        const propertyNames = schema.propertyNames;
+        for (const prop of keys) {
+            let additional = true;
+            const propSchema = schema?.properties?.[prop];
+            if (propSchema!=null) {
+                yield* errors(value[prop], propSchema);
+                additional = false;
+            }
+            if (patternProperties) {
+                for (const [pattern, subSchema] of patternProperties) {
+                    if (new RegExp(pattern).test(prop)) {
+                        yield* errors(value[prop], subSchema);
+                        additional = false;
+                    }
+                }
+            }
+            if (additional && 'additionalProperties' in schema) {
+                if (schema.additionalProperties === false) {
+                    yield `Object has additional property "${prop}"`;
+                } else {
+                    yield* errors(value[prop], schema.additionalProperties);
+                }
+            }
+            if (propertyNames != null) {
+                if (propertyNames===false) yield "property name '" + prop + "' is not allowed";
+                yield* errors(prop, propertyNames);
+            }
+        }
+    },
+    *array(schema, value) {
+
+        if ('minItems' in schema) {
+            if (value.length < schema.minItems) yield "Array has less items than minItems";
+        }
+        if ('maxItems' in schema) {
+            if (value.length > schema.maxItems) yield "Array has more items than maxItems";
+        }
+
+        const uniqueSet = schema.uniqueItems && new Set();
+
+        let numContains = 0;
+        const minContains = schema.minContains ?? 1;
+        const maxContains = schema.maxContains ?? Infinity;
+
+        let i = 0;
+        for (const item of value) {
+            if (schema.prefixItems?.[i] != null) {
+                yield* errors(item, schema.prefixItems[i]);
+            } else {
+                if (schema.items != null) {
+                    yield* errors(item, schema.items);
+                }
+            }
+            if (uniqueSet) {
+                const uValue = typeof item === 'object' && item != null ? 'hack'+JSON.stringify(item) : item; // todo: order of keys are not relevant, but JSON.stringify does not sort them
+                if (uniqueSet.has(uValue)) yield "Array has duplicate items";
+                uniqueSet.add(uValue);
+            }
+            if (schema.contains != null) {
+                if (!errors(item, schema.contains).next().done) continue; // does not match, ignore
+                numContains++;
+                //if (numContains >= minContains && maxContains === Infinity) return;
+            }
+            i++;
+        }
+        if (schema.contains != null) {
+            if (numContains < minContains) yield 'Array contains too few items that match "contains"';
+            if (numContains > maxContains) yield 'Array contains too many items that match "contains"';
+        }
+    }
 }
 
 const validators = {
@@ -227,93 +331,93 @@ const validators = {
     },
 
     // array
-    *items(schema, value) {
-        for (const item of value) {
-            yield* errors(item, schema);
-        }
-    },
-    *prefixItems(prefixItems, value) {
-        let i = 0;
-        for (const schema of prefixItems) {
-            if (value[i] === undefined) return;
-            yield* errors(value[i++], schema);
-        }
-    },
-    //additionalItems: (additionalItems, value, schema) => {}, // todo
-    *contains(contains, value, schema) {
-        const minContains = schema.minContains ?? 1;
-        const maxContains = schema.maxContains ?? Infinity;
-        let num = 0;
-        for (const item of value) {
-            if (!errors(item, contains).next().done) continue; // does not match, ignore
-            num++;
-            if (num >= minContains && maxContains === Infinity) return;
-        }
-        if (num < minContains) yield "does not contain enough items";
-        if (num > maxContains) yield "contains too many items";
-    },
-    minItems: (minItems, value) => value.length >= minItems,
-    maxItems: (maxItems, value) => value.length <= maxItems,
-    uniqueItems: (uniqueItems, value) => {
-        if (uniqueItems) {
-            const set = new Set();
-            for (const item of value) {
-                const uValue = typeof item === 'object' && item != null ? 'hack'+JSON.stringify(item) : item; // todo: order of keys are not relevant, but JSON.stringify does not sort them
-                if (set.has(uValue)) return false;
-                set.add(uValue);
-            }
-        }
-        return true;
-    },
+    // *items(schema, value) {
+    //     for (const item of value) {
+    //         yield* errors(item, schema);
+    //     }
+    // },
+    // *prefixItems(prefixItems, value) {
+    //     let i = 0;
+    //     for (const schema of prefixItems) {
+    //         if (value[i] === undefined) return;
+    //         yield* errors(value[i++], schema);
+    //     }
+    // },
+    // //additionalItems: (additionalItems, value, schema) => {}, // todo
+    // *contains(contains, value, schema) {
+    //     const minContains = schema.minContains ?? 1;
+    //     const maxContains = schema.maxContains ?? Infinity;
+    //     let num = 0;
+    //     for (const item of value) {
+    //         if (!errors(item, contains).next().done) continue; // does not match, ignore
+    //         num++;
+    //         if (num >= minContains && maxContains === Infinity) return;
+    //     }
+    //     if (num < minContains) yield "does not contain enough items";
+    //     if (num > maxContains) yield "contains too many items";
+    // },
+    // minItems: (minItems, value) => value.length >= minItems,
+    // maxItems: (maxItems, value) => value.length <= maxItems,
+    // uniqueItems: (uniqueItems, value) => {
+    //     if (uniqueItems) {
+    //         const set = new Set();
+    //         for (const item of value) {
+    //             const uValue = typeof item === 'object' && item != null ? 'hack'+JSON.stringify(item) : item; // todo: order of keys are not relevant, but JSON.stringify does not sort them
+    //             if (set.has(uValue)) return false;
+    //             set.add(uValue);
+    //         }
+    //     }
+    //     return true;
+    // },
 
     // properties
-    *properties(properties, value) {
-        for (const prop of Object.keys(value)) {
-            const propSchema = properties[prop];
-            if (propSchema!=null) yield* errors(value[prop], propSchema);
-        }
-    },
-    *patternProperties(patternProperties, value) {
-        const patterns = Object.entries(patternProperties);
-        for (const prop of Object.keys(value)) {
-            for (const [pattern, subSchema] of patterns) {
-                if (new RegExp(pattern).test(prop)) {
-                    yield* errors(value[prop], subSchema);
-                }
-            }
-        }
-    },
-    *propertyNames(propertyNames, value) {
-        for (const prop of Object.keys(value)) {
-            if (propertyNames===false) yield "property name '" + prop + "' is not allowed";
-            yield* errors(prop, propertyNames);
-        }
-    },
-    *additionalProperties(additionalProperties, value, schema){
-        const schemaProperties = Object.keys(schema.properties??{});
-        for (const prop of Object.keys(value)) {
-            if (!schemaProperties.includes(prop)) {
-                if (additionalProperties === false) {
-                    yield "property '" + prop + "' is not allowed";
-                } else {
-                    yield* errors(value[prop], additionalProperties);
-                }
-            }
-        }
-    },
-    required: (required, value) => {
-        const properties = Object.keys(value);
-        for (const prop of required) {
-            if (!properties.includes(prop)) return false;
-        }
-        return true;
-    },
-    minProperties: (minProperties, value) => {
-        return Object.keys(value).length >= minProperties;
-    },
-    maxProperties: (maxProperties, value) => {
-        return Object.keys(value).length <= maxProperties;
-    },
+    // *properties(properties, value) {
+    //     for (const prop of Object.keys(value)) {
+    //         const propSchema = properties[prop];
+    //         if (propSchema!=null) yield* errors(value[prop], propSchema);
+    //     }
+    // },
+    // *patternProperties(patternProperties, value) {
+    //     const patterns = Object.entries(patternProperties);
+    //     for (const prop of Object.keys(value)) {
+    //         for (const [pattern, subSchema] of patterns) {
+    //             if (new RegExp(pattern).test(prop)) {
+    //                 yield* errors(value[prop], subSchema);
+    //             }
+    //         }
+    //     }
+    // },
+    // *additionalProperties(additionalProperties, value, schema){
+    //     const schemaProperties = Object.keys(schema.properties??{});
+    //     for (const prop of Object.keys(value)) {
+    //         if (!schemaProperties.includes(prop)) {
+    //             if (additionalProperties === false) {
+    //                 yield "property '" + prop + "' is not allowed";
+    //             } else {
+    //                 yield* errors(value[prop], additionalProperties);
+    //             }
+    //         }
+    //     }
+    // },
+    // *propertyNames(propertyNames, value) {
+    //     for (const prop of Object.keys(value)) {
+    //         if (propertyNames===false) yield "property name '" + prop + "' is not allowed";
+    //         yield* errors(prop, propertyNames);
+    //     }
+    // },
+    // required: (required, value) => {
+    //     const properties = Object.keys(value);
+    //     for (const prop of required) {
+    //         if (!properties.includes(prop)) return false;
+    //     }
+    //     return true;
+    // },
+    // minProperties: (minProperties, value) => {
+    //     return Object.keys(value).length >= minProperties;
+    // },
+    // maxProperties: (maxProperties, value) => {
+    //     return Object.keys(value).length <= maxProperties;
+    // },
 
 
     // combiners
