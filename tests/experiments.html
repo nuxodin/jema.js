@@ -11,6 +11,23 @@
 <script type=module>
 import {Schema} from '../schema.js';
 
+
+const s = new Schema({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$ref": "https://json-schema.org/draft/2020-12/schema"
+});
+
+console.log(s)
+await s.deref();
+console.log(s)
+
+s.validate({"$defs": {"foo": {"type": "integer"}}});
+
+
+
+
+
+
 const schema = new Schema({
     $schema: "http://json-schema.org/draft-07/schema#",
     title: "geoline",

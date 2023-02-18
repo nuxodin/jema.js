@@ -34,7 +34,7 @@ const files = [
     'contains.json',
     'content.json',
     'default.json',
-    //'defs.json',
+    'defs.json',
     //'dependentRequired.json',
     //'dependentSchemas.json',
     //'dynamicRef.json',
@@ -72,38 +72,38 @@ const files = [
     //'unevaluatedProperties.json',
     'uniqueItems.json',
     //'unknownKeyword.json',
-    'vocabulary.json',
+    //'vocabulary.json',
 
-    'optional/bignum.json',
-    'optional/cross-draft.json',
-    //'optional/dependencies-compatibility.json',
-    'optional/ecmascript-regex.json',
-    'optional/float-overflow.json',
-    'optional/format-assertion.json',
-    'optional/no-schema.json',
-    'optional/non-bmp-regex.json',
-    //'optional/refOfUnknownKeyword.json',
+    // 'optional/bignum.json',
+    // 'optional/cross-draft.json',
+    // //'optional/dependencies-compatibility.json',
+    // 'optional/ecmascript-regex.json',
+    // 'optional/float-overflow.json',
+    // 'optional/format-assertion.json',
+    // 'optional/no-schema.json',
+    // 'optional/non-bmp-regex.json',
+    // //'optional/refOfUnknownKeyword.json',
 
-    'optional/format/date.json',
-    'optional/format/date-time.json',
-    'optional/format/duration.json',
-    'optional/format/email.json',
-    'optional/format/hostname.json',
-    'optional/format/idn-email.json',
-    'optional/format/idn-hostname.json',
-    'optional/format/ipv4.json',
-    'optional/format/ipv6.json',
-    'optional/format/iri.json',
-    'optional/format/iri-reference.json',
-    'optional/format/json-pointer.json',
-    'optional/format/regex.json',
-    'optional/format/relative-json-pointer.json',
-    'optional/format/time.json',
-    'optional/format/unknown.json',
-    'optional/format/uri.json',
-    'optional/format/uri-reference.json',
-    'optional/format/uri-template.json',
-    'optional/format/uuid.json',
+    // 'optional/format/date.json',
+    // 'optional/format/date-time.json',
+    // 'optional/format/duration.json',
+    // 'optional/format/email.json',
+    // 'optional/format/hostname.json',
+    // 'optional/format/idn-email.json',
+    // 'optional/format/idn-hostname.json',
+    // 'optional/format/ipv4.json',
+    // 'optional/format/ipv6.json',
+    // 'optional/format/iri.json',
+    // 'optional/format/iri-reference.json',
+    // 'optional/format/json-pointer.json',
+    // 'optional/format/regex.json',
+    // 'optional/format/relative-json-pointer.json',
+    // 'optional/format/time.json',
+    // 'optional/format/unknown.json',
+    // 'optional/format/uri.json',
+    // 'optional/format/uri-reference.json',
+    // 'optional/format/uri-template.json',
+    // 'optional/format/uuid.json',
 
 ];
 
@@ -123,12 +123,13 @@ Promise.all(promises.values()).then( async (result) => {
         for (const test of data) {
 
             const schema = new Schema(test.schema);
+
             try {
                 await schema.deref();
             } catch (e) {
                 console.log('deref error ', file, '------------------------');
                 console.log('schema', test.schema);
-                console.log('error', e);
+                console.dir('error', e);
             }
 
             describe(test.description, () => {

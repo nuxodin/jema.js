@@ -5,6 +5,7 @@
 export class Schema {
     constructor(schema){
         this.schema = schema;
+        this.id = schema.$id;
     }
     validate(value) {
         return !this.error(value);
@@ -23,9 +24,10 @@ export class Schema {
         if (!schema) return;
         for (const [prop, value] of Object.entries(schema)) {
             if (prop === '$ref') {
+                if (typeof value === 'object') continue; // already dereferenced
                 let subSchema;
                 if (value[0] !== '#') {
-                    const url = value.replace(/#.*/, '');
+                    const url = this.refToUrl(value);
                     const foraignSchema = this.foraignSchemas.get(url).schema;
                     subSchema = walk(foraignSchema, value.replace(/.*#/, ''));
                 } else {
@@ -39,7 +41,7 @@ export class Schema {
     }
     async #loadRefs(){
         const promises = this.#_loadRefs(this.schema);
-        const schemasArray = await Promise.all(promises.values()).catch(console.error);
+        const schemasArray = await Promise.all(promises.values()); // .catch(console.error);
         const keySchemas = new Map();
         for (const [key] of promises) {
             keySchemas.set(key, schemasArray.shift());
@@ -52,8 +54,9 @@ export class Schema {
 
         for (const [prop, value] of Object.entries(schema)) {
             if (prop === '$ref') {
+                if (typeof value === 'object') continue; // already dereferenced
                 if (value[0] !== '#') {
-                    const url = value.replace(/#.*/, '');
+                    const url = this.refToUrl(value);
                     refs.set(url, loadSchema(url));
                 }
             } else if (typeof value === 'object') {
@@ -63,6 +66,13 @@ export class Schema {
             }
         }
         return refs;
+    }
+    refToUrl(ref) {
+        ref = ref.replace(/#.*/, '');
+        // absolute url
+        if (ref.match(/^[a-z]+:/)) return ref;
+        // relative url
+        return this.id.replace(/\/[^/]*$/, '') + '/' + ref;
     }
 }
 
@@ -483,6 +493,7 @@ function loadSchema(url) {
     if (AllSchemas.has(url)) {
         return Promise.resolve(AllSchemas.get(url));
     } else {
+        console.log(url)
         const promise = fetch(url).then(res => res.json()).then(async data => {
             const schema = new Schema(data);
             await schema.deref();
