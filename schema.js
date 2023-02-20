@@ -16,7 +16,9 @@ export class Schema {
     error(value) {
         for (const error of this.errors(value)) return error;
     }
+
     async deref() {
+        this.findIds();
         await this.#loadRefs();
         this.#_deref(this.schema);
     }
@@ -28,18 +30,73 @@ export class Schema {
                 let subSchema;
                 if (value[0] !== '#') {
                     const url = this.refToUrl(value);
-                    const foraignSchema = this.foraignSchemas.get(url).schema;
-                    subSchema = walk(foraignSchema, value.replace(/.*#/, ''));
+                    const foraignSchema = this.foraignSchemas.get(url);
+                    subSchema = foraignSchema.walk(value.split('#')[1]||'');
                 } else {
-                    subSchema = walk(this.schema, value.replace(/.*#/, ''));
+                    subSchema = this.walk(value.substring(1));
+                }
+                if (subSchema == null) {
+                    console.error('Subschema not found', value, schema);
+                    continue;
                 }
                 schema.$ref = subSchema;
+            } else if (prop === 'properties') {
+                for (const propSchema of Object.values(value)) {
+                    this.#_deref(propSchema);
+                }
+            } else if (Array.isArray(value)) {
+                for (const item of value) {
+                    this.#_deref(item);
+                }
             } else if (typeof value === 'object') {
-                this.#_deref(schema[prop]);
+                this.#_deref(value);
             }
         }
     }
-    async #loadRefs(){
+    walk(fullpath) {
+        const [anchor, ...path] = fullpath.split('/');
+        const subSchema = this.anchors.get(anchor);
+        if (subSchema === undefined) return;
+        //if (subSchema === undefined) throw new Error(`Anchor "${anchor}" not found`);
+        return walk(subSchema, path);
+    }
+    findIds() {
+        this.#_findIds(this.schema);
+    }
+    #_findIds(schema) {
+        if (!schema) return;
+        for (const [prop, value] of Object.entries(schema)) {
+            if (prop === '$id') {
+                const url = new URL(value, this.id);
+                schema[prop] = url.toString(); // replace with absolute url
+                if (AllSchemas.has(url.href)) continue;
+                const IdSchema = new Schema(schema);
+
+                //AllSchemas.set(url.href, IdSchema.deref().then(() => IdSchema)); // we can not immediately deref as it will be infinite loop, but the Schema-Promise should be there
+                const promise = new Promise((resolve) => {
+                    queueMicrotask(() => {
+                        IdSchema.deref();
+                        resolve(IdSchema);
+                    });
+                });
+                AllSchemas.set(url.href, promise);
+            } else if (prop === 'const') {
+                return;
+            } else if (prop === 'properties') {
+                for (const propSchema of Object.values(value)) {
+                    this.#_findIds(propSchema);
+                }
+            } else if (Array.isArray(value)) {
+                // no need to check array items
+            } else if (typeof value === 'object') {
+                this.#_findIds(value);
+            }
+        }
+    }
+
+    async #loadRefs(){ // and anchors and ids
+        this.anchors = new Map([['', this.schema]]);
+
         const promises = this.#_loadRefs(this.schema);
         const schemasArray = await Promise.all(promises.values()); // .catch(console.error);
         const keySchemas = new Map();
@@ -53,15 +110,22 @@ export class Schema {
         if (!schema) return refs;
 
         for (const [prop, value] of Object.entries(schema)) {
+            if (prop === '$anchor') {
+                this.anchors.set(value, schema);
+            }
+            if (prop === 'enum') continue;
+            if (prop === 'const') continue;
+            if (typeof value === 'object') {
+                for (const [url, promise] of this.#_loadRefs(schema[prop])) {
+                    refs.set(url, promise);
+                }
+                continue;
+            }
             if (prop === '$ref') {
                 if (typeof value === 'object') continue; // already dereferenced
                 if (value[0] !== '#') {
                     const url = this.refToUrl(value);
                     refs.set(url, loadSchema(url));
-                }
-            } else if (typeof value === 'object') {
-                for (const [url, promise] of this.#_loadRefs(schema[prop])) {
-                    refs.set(url, promise);
                 }
             }
         }
@@ -76,40 +140,33 @@ export class Schema {
     }
 }
 
+const unevaluatedPropertiesFor = new WeakMap();
+let stopCollectingEvaluated = false; // for inside "not"
+
 export function *errors (value, schema){
-
-    if (schema === false) {
-        yield 'Schema is false';
-        return;
-    }
+    if (schema === false) { yield 'Schema is false'; return; }
     if (schema === true) return;
-
-    if (schema === undefined) {
-        throw new Error('Schema is undefined');
-    }
-
-
-    if (schema.$id) {
-        //AllSchemas.set(url, Promise.resolve(this));
-    }
-
-
-
-    delete schema.$comment; // remove comments to ensure they are not used by the user of the schema
+    if (schema === undefined) throw new Error('Schema is undefined');
+    //delete schema.$comment; // remove comments to ensure they are not used by the user of the schema
 
     let type = typeof value;
     if (value === null) type = 'null';
     if (Array.isArray(value)) type = 'array';
 
+    if (type === 'object' && 'unevaluatedProperties' in schema) {
+        if (!unevaluatedPropertiesFor.has(value)) {
+            unevaluatedPropertiesFor.set(value, new Set(Object.keys(value)));
+        }
+    }
+    if (type === 'array' && 'unevaluatedItems' in schema) {
+        if (!unevaluatedPropertiesFor.has(value)) {
+            unevaluatedPropertiesFor.set(value, new Set(value));
+        }
+    }
 
     for (const prop of Object.keys(schema)) {
         const validator = validators[prop];
-        if (!validator) {
-            if (prop === '$defs') continue; // ignore $def
-            if (prop === '$schema') continue; // ignore $def
-            // console.log(`Validator "${prop}" not found`);
-        } else {
-
+        if (validator) {
             if (relevantFor[prop] && !relevantFor[prop].includes(type)) continue;
 
             if (validator instanceof GeneratorFunction) {
@@ -131,6 +188,21 @@ export function *errors (value, schema){
         yield* typeValidators[type](schema, value);
     }
 
+
+    if (type === 'object' && 'unevaluatedProperties' in schema) {
+        for (const prop of unevaluatedPropertiesFor?.get(value) || []) {
+            yield* errors(value[prop], schema.unevaluatedProperties);
+        }
+        unevaluatedPropertiesFor.delete(value);
+    }
+    if (type === 'array' && 'unevaluatedItems' in schema) {
+        for (const item of unevaluatedPropertiesFor?.get(value) || []) {
+            console.log('unevaluated:', item, schema.unevaluatedItems)
+            yield* errors(item, schema.unevaluatedItems);
+        }
+        unevaluatedPropertiesFor.delete(value);
+    }
+
 }
 
 
@@ -145,20 +217,6 @@ const relevantFor = {
     pattern: ['string'],
     format: ['string'],
     contentEncoding: ['string'],
-    items: ['array'],
-    additionalItems: ['array'],
-    minItems: ['array'],
-    maxItems: ['array'],
-    uniqueItems: ['array'],
-    contains: ['array'],
-    minProperties: ['object'],
-    maxProperties: ['object'],
-    required: ['object'],
-    properties: ['object'],
-    patternProperties: ['object'],
-    additionalProperties: ['object'],
-    //dependencies: ['object'],
-    propertyNames: ['object'],
 }
 
 
@@ -176,12 +234,29 @@ const typeValidators = {
                 if (!keys.includes(prop)) yield `Object is missing required property "${prop}"`;
             }
         }
+        if ('dependentRequired' in schema) {
+            for (const [prop, required] of Object.entries(schema.dependentRequired)) {
+                if (keys.includes(prop)) {
+                    for (const req of required) {
+                        if (!keys.includes(req)) yield `Object is missing required property "${req}" (dependent on "${prop}")`;
+                    }
+                }
+            }
+        }
+        if ('dependentSchemas' in schema) {
+            for (const [prop, subSchema] of Object.entries(schema.dependentSchemas)) {
+                if (keys.includes(prop)) {
+                    yield* errors(value, subSchema);
+                }
+            }
+        }
+
         const patternProperties = schema.patternProperties && Object.entries(schema.patternProperties);
         const propertyNames = schema.propertyNames;
         for (const prop of keys) {
             let additional = true;
             const propSchema = schema?.properties?.[prop];
-            if (propSchema!=null) {
+            if (propSchema != null) {
                 yield* errors(value[prop], propSchema);
                 additional = false;
             }
@@ -194,17 +269,26 @@ const typeValidators = {
                 }
             }
             if (additional && 'additionalProperties' in schema) {
-                if (schema.additionalProperties === false) {
+                if (schema.additionalProperties === false) { // TODO: false equals false schema, so this can be removed
                     yield `Object has additional property "${prop}"`;
                 } else {
                     yield* errors(value[prop], schema.additionalProperties);
                 }
+                additional = false; // evaluated
             }
+
+            if (!additional) {
+                if (!stopCollectingEvaluated) {
+                    unevaluatedPropertiesFor.get(value)?.delete(prop);
+                }
+            }
+
             if (propertyNames != null) {
                 if (propertyNames===false) yield "property name '" + prop + "' is not allowed";
                 yield* errors(prop, propertyNames);
             }
         }
+
     },
     *array(schema, value) {
 
@@ -223,11 +307,16 @@ const typeValidators = {
 
         let i = 0;
         for (const item of value) {
+
+            let evaluated = false;
+
             if (schema.prefixItems?.[i] != null) {
                 yield* errors(item, schema.prefixItems[i]);
+                evaluated = true;
             } else {
                 if (schema.items != null) {
                     yield* errors(item, schema.items);
+                    evaluated = true;
                 }
             }
             if (uniqueSet) {
@@ -236,10 +325,22 @@ const typeValidators = {
                 uniqueSet.add(uValue);
             }
             if (schema.contains != null) {
-                if (!errors(item, schema.contains).next().done) continue; // does not match, ignore
-                numContains++;
+                const match = errors(item, schema.contains).next().done;
+                if (match) {
+                    evaluated = true;
+                    numContains++;
+                }
                 //if (numContains >= minContains && maxContains === Infinity) return;
             }
+
+            if (evaluated) {
+                if (!stopCollectingEvaluated) {
+                    console.log('delete', item)
+                    unevaluatedPropertiesFor.get(value)?.delete(item);
+                }
+            }
+
+
             i++;
         }
         if (schema.contains != null) {
@@ -250,11 +351,9 @@ const typeValidators = {
 }
 
 const validators = {
-
     *$ref(subSchema, value) {
         return yield* errors(value, subSchema);
     },
-
     enum: (allowed, value) => {
         for (const a of allowed) if (deepEqual(a, value)) return true;
     },
@@ -340,96 +439,6 @@ const validators = {
         // }
     },
 
-    // array
-    // *items(schema, value) {
-    //     for (const item of value) {
-    //         yield* errors(item, schema);
-    //     }
-    // },
-    // *prefixItems(prefixItems, value) {
-    //     let i = 0;
-    //     for (const schema of prefixItems) {
-    //         if (value[i] === undefined) return;
-    //         yield* errors(value[i++], schema);
-    //     }
-    // },
-    // //additionalItems: (additionalItems, value, schema) => {}, // todo
-    // *contains(contains, value, schema) {
-    //     const minContains = schema.minContains ?? 1;
-    //     const maxContains = schema.maxContains ?? Infinity;
-    //     let num = 0;
-    //     for (const item of value) {
-    //         if (!errors(item, contains).next().done) continue; // does not match, ignore
-    //         num++;
-    //         if (num >= minContains && maxContains === Infinity) return;
-    //     }
-    //     if (num < minContains) yield "does not contain enough items";
-    //     if (num > maxContains) yield "contains too many items";
-    // },
-    // minItems: (minItems, value) => value.length >= minItems,
-    // maxItems: (maxItems, value) => value.length <= maxItems,
-    // uniqueItems: (uniqueItems, value) => {
-    //     if (uniqueItems) {
-    //         const set = new Set();
-    //         for (const item of value) {
-    //             const uValue = typeof item === 'object' && item != null ? 'hack'+JSON.stringify(item) : item; // todo: order of keys are not relevant, but JSON.stringify does not sort them
-    //             if (set.has(uValue)) return false;
-    //             set.add(uValue);
-    //         }
-    //     }
-    //     return true;
-    // },
-
-    // properties
-    // *properties(properties, value) {
-    //     for (const prop of Object.keys(value)) {
-    //         const propSchema = properties[prop];
-    //         if (propSchema!=null) yield* errors(value[prop], propSchema);
-    //     }
-    // },
-    // *patternProperties(patternProperties, value) {
-    //     const patterns = Object.entries(patternProperties);
-    //     for (const prop of Object.keys(value)) {
-    //         for (const [pattern, subSchema] of patterns) {
-    //             if (new RegExp(pattern).test(prop)) {
-    //                 yield* errors(value[prop], subSchema);
-    //             }
-    //         }
-    //     }
-    // },
-    // *additionalProperties(additionalProperties, value, schema){
-    //     const schemaProperties = Object.keys(schema.properties??{});
-    //     for (const prop of Object.keys(value)) {
-    //         if (!schemaProperties.includes(prop)) {
-    //             if (additionalProperties === false) {
-    //                 yield "property '" + prop + "' is not allowed";
-    //             } else {
-    //                 yield* errors(value[prop], additionalProperties);
-    //             }
-    //         }
-    //     }
-    // },
-    // *propertyNames(propertyNames, value) {
-    //     for (const prop of Object.keys(value)) {
-    //         if (propertyNames===false) yield "property name '" + prop + "' is not allowed";
-    //         yield* errors(prop, propertyNames);
-    //     }
-    // },
-    // required: (required, value) => {
-    //     const properties = Object.keys(value);
-    //     for (const prop of required) {
-    //         if (!properties.includes(prop)) return false;
-    //     }
-    //     return true;
-    // },
-    // minProperties: (minProperties, value) => {
-    //     return Object.keys(value).length >= minProperties;
-    // },
-    // maxProperties: (maxProperties, value) => {
-    //     return Object.keys(value).length <= maxProperties;
-    // },
-
-
     // combiners
     *allOf(allOf, value) {
         for (const subSchema of allOf) {
@@ -437,9 +446,13 @@ const validators = {
         }
     },
     anyOf(anyOf, value) {
+        //let any = false;
         for (const subSchema of anyOf) {
             if (errors(value, subSchema).next().done) return true;
+            //const ok = [...errors(value, subSchema)].length === 0;
+            //any = any || ok;
         }
+        //return any;
         return false;
     },
     oneOf(oneOf, value) {
@@ -451,7 +464,9 @@ const validators = {
         return pass === 1;
     },
     not(subschema, value) {
+        stopCollectingEvaluated = true;
         for (const _error of errors(value, subschema)) {
+            stopCollectingEvaluated = false;
             return true;
         }
     },
@@ -459,7 +474,6 @@ const validators = {
         if (deprecated) console.error("deprecated (value: " + value + "))", schema);
         return true;
     },
-    // todo: implement
     *if(ifSchema, value, schema) {
         if (!schema.then && !schema.else) return; // ignore if no "then" or "else"
         if (errors(value, ifSchema).next().done) {
@@ -470,18 +484,6 @@ const validators = {
             yield* errors(value, schema.else);
         }
     },
-    // *dependentRequired(dependentRequired, value) {
-    //     for (const prop of Object.keys(value)) {
-    //         if (dependentRequired[prop]) {
-    //             for (const requiredProp of dependentRequired[prop]) {
-    //                 if (!value[requiredProp]) {
-    //                     yield "property '" + requiredProp + "' is required";
-    //                 }
-    //             }
-    //         }
-    //     }
-    // },
-
 };
 
 
@@ -493,7 +495,6 @@ function loadSchema(url) {
     if (AllSchemas.has(url)) {
         return Promise.resolve(AllSchemas.get(url));
     } else {
-        console.log(url)
         const promise = fetch(url).then(res => res.json()).then(async data => {
             const schema = new Schema(data);
             await schema.deref();
@@ -503,20 +504,23 @@ function loadSchema(url) {
         return promise;
     }
 }
+window.AllSchemas = AllSchemas;
 
-function walk(schema, path) {
-    const parts = path.split('/').filter(Boolean);
+
+function walk(schema, parts) {
     let subSchema = schema;
-    for (const part of parts) {
+    for (let part of parts) {
+        part = part.replace(/~1/g, '/').replace(/~0/g, '~').replace(/%25/g, '%').replace(/%22/g, '"');
         subSchema = subSchema[part];
-        if (!subSchema) {
-            const msg = "path "+path+" not found in schema";
+        if (subSchema == null) {
+            const msg = 'path "' + parts.join('/') + '" not found in schema (at part "' + part + '")';
             console.warn(msg, schema);
-            throw new Error(msg);
+            //throw new Error(msg);
         }
     }
     return subSchema;
 }
+
 // function deepMixin(target, source) {
 //     for (const [prop, value] of Object.entries(source)) {
 //         if (typeof value === 'object') {

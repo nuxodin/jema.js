@@ -27,22 +27,22 @@ import {Schema} from '../schema.js';
 const files = [
     'additionalProperties.json',
     'allOf.json',
-    //'anchor.json',
-    'anyOf.json',
+    'anchor.json',
+     'anyOf.json',
     'boolean_schema.json',
     'const.json',
     'contains.json',
     'content.json',
     'default.json',
-    'defs.json',
-    //'dependentRequired.json',
-    //'dependentSchemas.json',
+    //'defs.json',
+    'dependentRequired.json',
+    'dependentSchemas.json',
     //'dynamicRef.json',
     'enum.json',
     'exclusiveMaximum.json',
     'exclusiveMinimum.json',
     'format.json',
-    //'id.json',
+    'id.json',
     'if-then-else.json',
     'infinite-loop-detection.json',
     'items.json',
@@ -64,15 +64,15 @@ const files = [
     'prefixItems.json',
     'properties.json',
     'propertyNames.json',
-    //'ref.json',
+    'ref.json',
     //'refRemote.json',
     'required.json',
     'type.json',
-    //'unevaluatedItems.json',
-    //'unevaluatedProperties.json',
+     'unevaluatedItems.json',
+    'unevaluatedProperties.json',
     'uniqueItems.json',
-    //'unknownKeyword.json',
-    //'vocabulary.json',
+    'unknownKeyword.json',
+    'vocabulary.json',
 
     // 'optional/bignum.json',
     // 'optional/cross-draft.json',
@@ -120,6 +120,7 @@ for (const file of files) {
 Promise.all(promises.values()).then( async (result) => {
     for (const [index, data] of result.entries()) {
         const file = files[index];
+
         for (const test of data) {
 
             const schema = new Schema(test.schema);
@@ -136,15 +137,19 @@ Promise.all(promises.values()).then( async (result) => {
                 for (const subtest of test.tests) {
                     it(subtest.description, () => {
 
-                        const result = schema.validate(subtest.data);
+                        console.log('------------------------', file, '------------------------');
+                        console.log(subtest.description);
+
+                        const errors = [...schema.errors(subtest.data)];
+                        const result = errors.length === 0;
 
                         if (result !== subtest.valid) {
-                            console.log('------------------------', file, '------------------------');
+                            console.log('------------------------error------------------------');
                             console.log(subtest.description);
-                            console.log('data', subtest.data);
-                            console.log('schema', test.schema);
-                            console.log('expected', subtest.valid);
-                            const errors = [...schema.errors(subtest.data)];
+                            console.log('data:', subtest.data);
+                            console.log('schema original:', test.schema);
+                            console.log('schema computed:', schema);
+                            console.log('expected:', subtest.valid);
                             console.log('errors', errors);
                         }
                         chai.expect( result ).to.be.equal(subtest.valid);
