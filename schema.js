@@ -61,13 +61,13 @@ export class Schema {
         return walk(subSchema, path);
     }
     findIds() {
-        this.#_findIds(this.schema);
+        this.#_findIds(this.schema, this.id);
     }
-    #_findIds(schema) {
+    #_findIds(schema, parentId) {
         if (!schema) return;
         for (const [prop, value] of Object.entries(schema)) {
             if (prop === '$id') {
-                const url = new URL(value, this.id);
+                const url = new URL(value, parentId);
                 schema[prop] = url.toString(); // replace with absolute url
                 if (AllSchemas.has(url.href)) continue;
                 const IdSchema = new Schema(schema);
@@ -84,12 +84,12 @@ export class Schema {
                 return;
             } else if (prop === 'properties') {
                 for (const propSchema of Object.values(value)) {
-                    this.#_findIds(propSchema);
+                    this.#_findIds(propSchema, schema.$id || parentId);
                 }
             } else if (Array.isArray(value)) {
                 // no need to check array items
             } else if (typeof value === 'object') {
-                this.#_findIds(value);
+                this.#_findIds(value, schema.$id || parentId);
             }
         }
     }
@@ -146,9 +146,12 @@ let stopCollectingEvaluated = false; // for inside "not"
 export function *errors (value, schema){
     if (schema === false) { yield 'Schema is false'; return; }
     if (schema === true) return;
-    if (schema === undefined) throw new Error('Schema is undefined');
+    if (typeof schema !== 'object') {
+//        throw new Error('Schema is not an object');
+        console.error('Schema is not an object', schema);
+        return;
+    }
     //delete schema.$comment; // remove comments to ensure they are not used by the user of the schema
-
     let type = typeof value;
     if (value === null) type = 'null';
     if (Array.isArray(value)) type = 'array';
@@ -187,7 +190,6 @@ export function *errors (value, schema){
     if (typeValidators[type]) {
         yield* typeValidators[type](schema, value);
     }
-
 
     if (type === 'object' && 'unevaluatedProperties' in schema) {
         for (const prop of unevaluatedPropertiesFor?.get(value) || []) {
@@ -250,7 +252,6 @@ const typeValidators = {
                 }
             }
         }
-
         const patternProperties = schema.patternProperties && Object.entries(schema.patternProperties);
         const propertyNames = schema.propertyNames;
         for (const prop of keys) {
@@ -262,7 +263,7 @@ const typeValidators = {
             }
             if (patternProperties) {
                 for (const [pattern, subSchema] of patternProperties) {
-                    if (new RegExp(pattern).test(prop)) {
+                    if (new RegExp(pattern,'u').test(prop)) {
                         yield* errors(value[prop], subSchema);
                         additional = false;
                     }
@@ -340,14 +341,14 @@ const typeValidators = {
                 }
             }
 
-
             i++;
         }
         if (schema.contains != null) {
             if (numContains < minContains) yield 'Array contains too few items that match "contains"';
             if (numContains > maxContains) yield 'Array contains too many items that match "contains"';
         }
-    }
+    },
+
 }
 
 const validators = {
@@ -384,43 +385,42 @@ const validators = {
     minLength: (minLen, value) => [...value].length >= minLen,
     maxLength: (maxLen, value) => [...value].length <= maxLen,
     pattern: (pattern, value) => {
-        return new RegExp(pattern).test(value);
+        return new RegExp(pattern,'u').test(value);
     },
+
+    // others:
+    // https://github.com/korzio/djv/blob/master/lib/utils/formats.js
+    // https://github.com/sagold/json-schema-library/blob/042867abef41b519571bbe082087116e007a23d5/dist/module/lib/validation/format.js
     format: (format, value) => {
         switch (format) {
             case 'date-time': return validDateTime(value);
             case 'date': return validDate(value);
             case 'time': return validTime(value);
             case 'duration': return /^P(\d+Y|\d+M|\d+D|\d+W|T(\d+H|\d+M|\d+S))+$/.test(value); // TODD: use Temporal when available
-            case 'email': return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-            case 'idn-email': return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-            case 'hostname': return /^[^\s@]+\.[^\s@]+$/.test(value);
-            case 'ipv4': return /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value);
-            case 'ipv6': return /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/gi.test(value);
+            case 'email':
+            case 'idn-email':
+                return /^(?!\.)("([^"\r\\]|\\["\r\\])*"|([-a-z0-9!#$%&'*+/=?^_`{|}~]|(?<!\.)\.)*)(?<!\.)@[a-z0-9][\w\.-]*[a-z0-9]\.[a-z][a-z\.]*[a-z]$/.test(value);
+            case 'ipv4': return isValidIPAddress(value);
+            case 'ipv6':
+                try { new URL(`http://[${value}]`); return true; }
+                catch { return false; }
             case 'uri':
-            case 'iri': {
+            case 'iri':
                 try { new URL(value); return true; }
                 catch { return false; }
-            }
             case 'uri-reference':
+            case 'iri-reference':
                 try { new URL(value, 'http://x.y'); return true; }
                 catch { return false; }
             case 'uri-template': return /^([^\{\}]|\{[^\{\}]+\})*$/.test(value);
-            case 'idn-hostname': {
-                try {
-                    const url = new URL('http://'+value);
-                    if (url.hostname !== value) return false;
-                } catch { return false; }
-                return isValidIDN(value);
-            }
-            case 'iri-reference': return /^https?:\/\/[^\s]+$/.test(value);
-            case 'uuid': return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(value);
-            case 'json-pointer': return /^\/[^\s]+$/.test(value);
-            case 'relative-json-pointer': return /^\/[^\s]+$/.test(value);
-            case 'regex': {
-                try { new RegExp(value); return true; }
+            case 'hostname': return /^[^\s@]{1,63}\.[^\s@]+$/.test(value);
+            case 'idn-hostname': return isValidIdnHostname(value);
+            case 'uuid': return /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
+            case 'json-pointer': return value==='' || /^\/(?:[^/~]|~[01]|\/)*$/.test(value);
+            case 'relative-json-pointer': return /^\d+(\/(?:[^/~]|~[01])*)*$/.test(value);
+            case 'regex':
+                try { new RegExp(value, 'u'); return true; }
                 catch { return false; }
-            }
             default: console.log('jsons chema unknown format: '+format);
         }
         return true;
@@ -515,7 +515,6 @@ function walk(schema, parts) {
         if (subSchema == null) {
             const msg = 'path "' + parts.join('/') + '" not found in schema (at part "' + part + '")';
             console.warn(msg, schema);
-            //throw new Error(msg);
         }
     }
     return subSchema;
@@ -557,7 +556,6 @@ function deepEqual(a, b) {
     }
     return false;
 }
-
 function validDate(value) {
     const x = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!x) return false;
@@ -597,26 +595,41 @@ function validDateTime(value) {
     if (!validTime(time)) return false;
     return true;
 }
+function isValidIdnHostname(hostname) {
+    try { new URL('http://' + hostname); }
+    catch { return false; }
+    const lableFails = hostname.split('.').some(x => {
+        if (x.length > 63) return true;
+        if (x.substring(2, 4) === '--') return true;
+    })
+    if (lableFails) return false;
 
+    // Hebrew GERSHAYIM not preceded by anything
+    if (hostname.match(/(?<!.)\u05F4/)) return false;
+    //Hebrew GERESH not preceded by Hebrew
+    if (hostname.match(/(?<![\p{Script=Hebrew}])\u05F3/u)) return false;
 
+    // Greek KERAIA not followed by anything
+    //if (hostname.match(/\u0375(?!.)/)) return false;
+    // Greek KERAIA not followed by Greek
+    if (hostname.match(/\u0375(?![\p{Script=Greek}])/u)) return false;
 
-function isValidIDN(hostname) {
-    const regex = /^([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}$/i;
-    // Check if the input hostname matches the basic DNS hostname pattern
-    if (!regex.test(hostname)) return false;
-    try {
-        // Convert the hostname to its Punycode representation
-        const punycodeHostname = encodeURI(hostname)
-        .replace(/%[0-9A-F]{2}/g, c => String.fromCharCode('0x' + c.substr(1)))
-        .split('.')
-        .map(label => {
-            return label.match(/^xn--/) ? punycode.decode(label.slice(4)) : label;
-        })
-        .join('.');
-        // Check if the Punycode representation of the hostname is valid
-        if (!regex.test(punycodeHostname)) return false;
-    } catch {
-        return false;
+    if (hostname.includes('\u302E')) return false;
+    if (hostname.startsWith('-')) return false;
+    if (hostname.endsWith('-')) return false;
+    if (hostname === '・') return false;
+    if (hostname.includes('・')) {
+        if (!/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(hostname)) {
+           return false;
+        }
+    }
+    if (hostname.includes('·')) {
+        if (!/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(hostname)) {
+           return false;
+        }
     }
     return true;
+}
+function isValidIPAddress(ip) {
+    return /^((?!0\d)\d{1,3}\.){3}(?!0\d)\d{1,3}$/.test(ip) && ip.split('.').every(p => p >= 0 && p <= 255);
 }
