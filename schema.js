@@ -375,7 +375,10 @@ const validators = {
     },
 
     // number
-    multipleOf: (mOf, value) => Number.isInteger(value / mOf), // value % mOf === 0 is not working for small numbers
+    multipleOf: (mOf, value) => {
+        if (Number.isInteger(value) && Number.isInteger(1 / mOf)) return true; // all integers are multiples of 0.5, if overflow is handled
+        if (Number.isInteger(value / mOf)) return true;
+    },
     minimum: (min, value) => value >= min,
     maximum: (max, value) => value <= max,
     exclusiveMinimum: (min, value) => value > min,
@@ -396,32 +399,23 @@ const validators = {
             case 'date-time': return validDateTime(value);
             case 'date': return validDate(value);
             case 'time': return validTime(value);
-            case 'duration': return /^P(\d+Y|\d+M|\d+D|\d+W|T(\d+H|\d+M|\d+S))+$/.test(value); // TODD: use Temporal when available
+            case 'duration': return parseDuration(value);
             case 'email':
-            case 'idn-email':
-                return /^(?!\.)("([^"\r\\]|\\["\r\\])*"|([-a-z0-9!#$%&'*+/=?^_`{|}~]|(?<!\.)\.)*)(?<!\.)@[a-z0-9][\w\.-]*[a-z0-9]\.[a-z][a-z\.]*[a-z]$/.test(value);
-            case 'ipv4': return isValidIPAddress(value);
-            case 'ipv6':
-                try { new URL(`http://[${value}]`); return true; }
-                catch { return false; }
+            case 'idn-email': return isValidEmail(value, format==='idn-email');
+            case 'ipv4': return isValidIPv4(value);
+            case 'ipv6': return isValidIPv6(value);
             case 'uri':
-            case 'iri':
-                try { new URL(value); return true; }
-                catch { return false; }
+            case 'iri': try { new URL(value); return true; } catch { return false; }
             case 'uri-reference':
-            case 'iri-reference':
-                try { new URL(value, 'http://x.y'); return true; }
-                catch { return false; }
+            case 'iri-reference': try { new URL(value, 'http://x.y'); return true; } catch { return false; }
             case 'uri-template': return /^([^\{\}]|\{[^\{\}]+\})*$/.test(value);
-            case 'hostname': return /^[^\s@]{1,63}\.[^\s@]+$/.test(value);
+            case 'hostname': return isValidHostname(value);
             case 'idn-hostname': return isValidIdnHostname(value);
             case 'uuid': return /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
-            case 'json-pointer': return value==='' || /^\/(?:[^/~]|~[01]|\/)*$/.test(value);
-            case 'relative-json-pointer': return /^\d+(\/(?:[^/~]|~[01])*)*$/.test(value);
-            case 'regex':
-                try { new RegExp(value, 'u'); return true; }
-                catch { return false; }
-            default: console.log('jsons chema unknown format: '+format);
+            case 'json-pointer': return /^(?:\/(?:[^~/]|~0|~1)*)*$/.test(value);
+            case 'relative-json-pointer': return /^(?:0|[1-9][0-9]*)(?:#|(?:\/(?:[^~/]|~0|~1)*)*)$/.test(value);
+            case 'regex': try { new RegExp(value, 'u'); return true; } catch { return false; }
+            default: console.warn('jsons chema unknown format: '+format);
         }
         return true;
     },
@@ -595,6 +589,19 @@ function validDateTime(value) {
     if (!validTime(time)) return false;
     return true;
 }
+
+function isValidHostname(hostname) {
+    if (!hostname || hostname.length > 255) return false;
+    const regex = /^[a-zA-Z0-9\-.]+$/;
+    if (!regex.test(hostname)) return false;
+    const labels = hostname.split(".");
+    for (const label of labels) {
+        if (!label || label.length > 63) return false;
+        if (label[0] === "-" || label.at(-1) === "-") return false;
+    }
+    return true;
+}
+
 function isValidIdnHostname(hostname) {
     try { new URL('http://' + hostname); }
     catch { return false; }
@@ -630,6 +637,56 @@ function isValidIdnHostname(hostname) {
     }
     return true;
 }
-function isValidIPAddress(ip) {
+function isValidIPv4(ip) {
     return /^((?!0\d)\d{1,3}\.){3}(?!0\d)\d{1,3}$/.test(ip) && ip.split('.').every(p => p >= 0 && p <= 255);
+}
+function isValidIPv6(ip) {
+    try { new URL(`http://[${ip}]`); return true; }
+    catch { return false; }
+}
+function isValidEmail(value, idn) {
+    // try { new URL(`mailto:${value}`); return true; }
+    // catch { return false; }
+    const index = value.lastIndexOf('@');
+    const local = value.substring(0, index);
+    const domain = value.substring(index + 1);
+    if (local==='') return false;
+    if (domain[0] === '[' && domain.at(-1) === ']') {
+        if (domain.startsWith('[IPv6:')) {
+            if (!isValidIPv6(domain.slice(6,-1))) return false;
+        } else {
+            if (!isValidIPv4(domain.slice(1,-1))) return false;
+        }
+    } else if (idn) {
+        if (!isValidIdnHostname(domain)) return false;
+    } else {
+        if (!isValidHostname(domain)) return false;
+    }
+    return /^(?!\.)("([^"\r\\]|\\["\r\\])*"|([-a-z0-9!#$%&'*+/=?^_`{|}~]|(?<!\.)\.)*)(?<!\.)$/.test(local);
+}
+
+function parseDuration(duration) {
+    // use Temporal.Duration.from(duration) when it's available
+    const [datePart, timePart] = duration.split('T');
+    const dateRegex = /^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?$/;
+    const dateMatches = datePart.match(dateRegex);
+    if (!dateMatches) return null;
+    const [, years, months, weeks, days] = dateMatches;
+    if (weeks != null && (years != null || months != null || days != null)) return null; // weeks can't be combined with other units
+    if (timePart === '') return null;
+    const timeRegex = /^(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/;
+    const timeMatches = timePart?.match(timeRegex) ?? [];
+    // if (!timeMatches) return null;
+    const [, hours, minutes, seconds] = timeMatches;
+    if (years == null && months == null && weeks == null && days == null && hours == null && minutes == null && seconds == null) return null;
+    return {years, months, weeks, days, hours, minutes, seconds};
+    // return {
+    //     years: parseInt(years??0),
+    //     months: parseInt(months??0),
+    //     weeks: parseInt(weeks??0),
+    //     days: parseInt(days??0),
+    //     hours: parseInt(hours??0),
+    //     minutes: parseInt(minutes??0),
+    //     seconds: parseInt(seconds??0),
+    // };
 }

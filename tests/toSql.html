@@ -10,7 +10,9 @@
 
 <script type=module>
 
-import {toTablesSQL} from '../tools/toSQL.js';
+import {toCreateTable} from '../tools/toSQL.js';
+import {dump} from 'https://cdn.jsdelivr.net/gh/nuxodin/dump.js@1.2.1/mod.min.js';
+
 
 const schema = {
     "type": "object",
@@ -71,8 +73,11 @@ const schema = {
 };
 
 
-console.log(
-    toTablesSQL(schema)
-);
+jsonOut.innerHTML = dump(schema);
+sqlOut.innerHTML = toCreateTable(schema);
 
 </script>
+
+
+<div id="jsonOut"></div>
+<pre id="sqlOut"></pre>

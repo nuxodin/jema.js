@@ -57,21 +57,6 @@ export function fromShowFields(fields) {
     return schema;
 }
 
-const textTypesLength = {
-    tinytext: 255,
-    text: 65535,
-    mediumtext: 16777215,
-    longtext: 4294967295,
-};
-const intTypesSize = {
-    tinyint: 255,
-    smallint: 65535,
-    mediumint: 16777215,
-    int: 4294967295,
-    bigint: 18446744073709551615,
-};
-
-
 export function toFieldDefinition(schema) {
     // produces somethin like the following from a jsonschema
     // eg. "INT(11) NOT NULL AUTO_INCREMENT COMMENT 'A comment'"
@@ -143,11 +128,24 @@ const mapType = {
     'array':'json',
     'object':'json',
 };
+const textTypesLength = {
+    tinytext: 255,
+    text: 65535,
+    mediumtext: 16777215,
+    longtext: 4294967295,
+};
+const intTypesSize = {
+    tinyint: 255,
+    smallint: 65535,
+    mediumint: 16777215,
+    int: 4294967295,
+    bigint: 18446744073709551615,
+};
 
 
 
-/*
-export function toTablesSQL(schema) {
+/* just for test */
+export function toCreateTable(schema) {
     let sql = '';
     for (const [name, table] of Object.entries(schema.properties)) {
 
@@ -161,7 +159,7 @@ export function toTablesSQL(schema) {
         sql +=
         'CREATE TABLE `'+name+'` (\n'+
             toFieldsSQL(table)+
-            (primaries.length ? 'PRIMARY KEY (`'+primaries.join('`,`')+'`)\n' : '')+
+            (primaries.length ? '   PRIMARY KEY (`'+primaries.join('`,`')+'`)\n' : '')+
         ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\n\n';
     }
     return sql;
@@ -169,10 +167,11 @@ export function toTablesSQL(schema) {
 function toFieldsSQL(schema) {
     let sql = '';
     for (const [name, field] of Object.entries(schema.properties)) {
-        sql += '`'+name+'` '+toFieldDefinition(field)+',\n';
+        sql += '  `'+name+'` '+toFieldDefinition(field)+',\n';
     }
     return sql;
 }
+/*
 */
 
 
