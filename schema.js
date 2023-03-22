@@ -440,14 +440,18 @@ const validators = {
         }
     },
     anyOf(anyOf, value) {
-        //let any = false;
+        const collecting = unevaluatedPropertiesFor.has(value);
+
+        let any = false;
         for (const subSchema of anyOf) {
-            if (errors(value, subSchema).next().done) return true;
-            //const ok = [...errors(value, subSchema)].length === 0;
-            //any = any || ok;
+            const ok = errors(value, subSchema).next().done;
+            //const ok = [...errors(value, subSchema)].length === 0; // no need? zzz
+            if (ok) {
+                if (!collecting) return true;
+                any = true;
+            }
         }
-        //return any;
-        return false;
+        return any;
     },
     oneOf(oneOf, value) {
         let pass = 0;
@@ -469,13 +473,12 @@ const validators = {
         return true;
     },
     *if(ifSchema, value, schema) {
-        if (!schema.then && !schema.else) return; // ignore if no "then" or "else"
+        // no if, no else and not collecting unevaluatedProperties
+        if (!schema.then && !schema.else && !unevaluatedPropertiesFor.has(value)) return;
         if (errors(value, ifSchema).next().done) {
-            if (!schema.then) return; // ignore if no "then"
-            yield* errors(value, schema.then);
+            if (schema.then != null) yield* errors(value, schema.then);
         } else {
-            if (!schema.else) return; // ignore if no "else"
-            yield* errors(value, schema.else);
+            if (schema.else != null) yield* errors(value, schema.else);
         }
     },
 };
