@@ -26,7 +26,7 @@ schema.errors('3') // all errors (iterator);
 ## Install
 
 ```javascript
-import {Schema} from '../schema.js';
+import {Schema} from 'https://cdn.jsdelivr.net/gh/nuxodin/schema.js@x.x.x/schema.min.js';
 ```
 
 ## Todo
