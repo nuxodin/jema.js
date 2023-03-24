@@ -163,7 +163,9 @@ export function *errors (value, schema){
     }
     if (type === 'array' && 'unevaluatedItems' in schema) {
         if (!unevaluatedPropertiesFor.has(value)) {
-            unevaluatedPropertiesFor.set(value, new Set(value));
+            // array (value) to map (index to key) so we can remove evaluated items
+            const map = new Map(value.map((obj, i) => [i, obj]));
+            unevaluatedPropertiesFor.set(value, map);
         }
     }
 
@@ -198,8 +200,7 @@ export function *errors (value, schema){
         unevaluatedPropertiesFor.delete(value);
     }
     if (type === 'array' && 'unevaluatedItems' in schema) {
-        for (const item of unevaluatedPropertiesFor?.get(value) || []) {
-            console.log('unevaluated:', item, schema.unevaluatedItems)
+        for (const [,item] of unevaluatedPropertiesFor?.get(value) || []) {
             yield* errors(item, schema.unevaluatedItems);
         }
         unevaluatedPropertiesFor.delete(value);
@@ -252,11 +253,19 @@ const typeValidators = {
                 }
             }
         }
+
+        const properties = schema.properties;
         const patternProperties = schema.patternProperties && Object.entries(schema.patternProperties);
         const propertyNames = schema.propertyNames;
+        const additionalProperties = schema.additionalProperties;
+
         for (const prop of keys) {
+
+            if (propertyNames != null) yield* errors(prop, propertyNames);
+
             let additional = true;
-            const propSchema = schema?.properties?.[prop];
+
+            const propSchema = properties?.[prop];
             if (propSchema != null) {
                 yield* errors(value[prop], propSchema);
                 additional = false;
@@ -269,24 +278,12 @@ const typeValidators = {
                     }
                 }
             }
-            if (additional && 'additionalProperties' in schema) {
-                if (schema.additionalProperties === false) { // TODO: false equals false schema, so this can be removed
-                    yield `Object has additional property "${prop}"`;
-                } else {
-                    yield* errors(value[prop], schema.additionalProperties);
-                }
-                additional = false; // evaluated
+            if (additionalProperties != null && additional) {
+                yield* errors(value[prop], additionalProperties);
+                additional = false;
             }
-
-            if (!additional) {
-                if (!stopCollectingEvaluated) {
-                    unevaluatedPropertiesFor.get(value)?.delete(prop);
-                }
-            }
-
-            if (propertyNames != null) {
-                if (propertyNames===false) yield "property name '" + prop + "' is not allowed";
-                yield* errors(prop, propertyNames);
+            if (!additional && !stopCollectingEvaluated) {
+                unevaluatedPropertiesFor.get(value)?.delete(prop);
             }
         }
 
@@ -320,10 +317,11 @@ const typeValidators = {
                     evaluated = true;
                 }
             }
-            if (uniqueSet) {
-                const uValue = typeof item === 'object' && item != null ? 'hack'+JSON.stringify(item) : item; // todo: order of keys are not relevant, but JSON.stringify does not sort them
-                if (uniqueSet.has(uValue)) yield "Array has duplicate items";
-                uniqueSet.add(uValue);
+            if (schema.uniqueItems) {
+                //const uValue = typeof item === 'object' && item != null ? 'hack'+JSON.stringify(item) : item; // todo: order of keys are not relevant, but JSON.stringify does not sort them
+                const uniqueValue = uniqueValueIgnoreKeyOrder(item);
+                if (uniqueSet.has(uniqueValue)) yield "Array has duplicate items";
+                uniqueSet.add(uniqueValue);
             }
             if (schema.contains != null) {
                 const match = errors(item, schema.contains).next().done;
@@ -336,8 +334,7 @@ const typeValidators = {
 
             if (evaluated) {
                 if (!stopCollectingEvaluated) {
-                    console.log('delete', item)
-                    unevaluatedPropertiesFor.get(value)?.delete(item);
+                    unevaluatedPropertiesFor.get(value)?.delete(i);
                 }
             }
 
@@ -415,7 +412,7 @@ const validators = {
             case 'json-pointer': return /^(?:\/(?:[^~/]|~0|~1)*)*$/.test(value);
             case 'relative-json-pointer': return /^(?:0|[1-9][0-9]*)(?:#|(?:\/(?:[^~/]|~0|~1)*)*)$/.test(value);
             case 'regex': try { new RegExp(value, 'u'); return true; } catch { return false; }
-            default: console.warn('jsons chema unknown format: '+format);
+            default: console.warn('jsons schema unknown format: '+format);
         }
         return true;
     },
@@ -441,10 +438,9 @@ const validators = {
     },
     anyOf(anyOf, value) {
         const collecting = unevaluatedPropertiesFor.has(value);
-
         let any = false;
         for (const subSchema of anyOf) {
-            const ok = errors(value, subSchema).next().done;
+            const ok = errors(value, subSchema).next().done; // is it intentional to stop evaluating on first match?
             //const ok = [...errors(value, subSchema)].length === 0; // no need? zzz
             if (ok) {
                 if (!collecting) return true;
@@ -456,25 +452,25 @@ const validators = {
     oneOf(oneOf, value) {
         let pass = 0;
         for (const subSchema of oneOf) {
-            pass += [...errors(value, subSchema)].length ? 0 : 1;
+            pass += errors(value, subSchema).next().done ? 1 : 0; // is it intentional to stop evaluating on first match?
+            //pass += [...errors(value, subSchema)].length ? 0 : 1;
             if (pass > 1) return false;
         }
         return pass === 1;
     },
-    not(subschema, value) {
+    not(subSchema, value) {
         stopCollectingEvaluated = true;
-        for (const _error of errors(value, subschema)) {
-            stopCollectingEvaluated = false;
-            return true;
-        }
+        const ok = errors(value, subSchema).next().done;
+        stopCollectingEvaluated = false;
+        return !ok;
     },
     deprecated(deprecated, value, schema) {
         if (deprecated) console.error("deprecated (value: " + value + "))", schema);
         return true;
     },
     *if(ifSchema, value, schema) {
-        // no if, no else and not collecting unevaluatedProperties
-        if (!schema.then && !schema.else && !unevaluatedPropertiesFor.has(value)) return;
+        const collecting = unevaluatedPropertiesFor.has(value);
+        if (!schema.then && !schema.else && !collecting) return; // no if, no else and not collecting unevaluatedProperties
         if (errors(value, ifSchema).next().done) {
             if (schema.then != null) yield* errors(value, schema.then);
         } else {
@@ -553,6 +549,25 @@ function deepEqual(a, b) {
     }
     return false;
 }
+
+// makes the value unique, objects and arrays are stringified
+function uniqueValueIgnoreKeyOrder(value) {
+    if (value == null || typeof value !== 'object') return value;
+    const copy = deepCopyObjectAndOrderKeys(value);
+    return 'hopeNoOneWillEverUseString'+JSON.stringify(copy);
+    //return 'hack'+JSON.stringify(value)
+}
+function deepCopyObjectAndOrderKeys(value) {
+    if (value == null || typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.map(deepCopyObjectAndOrderKeys);
+    const copy = {};
+    for (const key of Object.keys(value).sort()) {
+        copy[key] = deepCopyObjectAndOrderKeys(value[key]);
+    }
+    return copy;
+}
+
+/* format validate functions */
 function validDate(value) {
     const x = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!x) return false;
