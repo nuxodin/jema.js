@@ -2,10 +2,13 @@
 // i found this info:
 // https://json-schema.org/draft/2020-12/json-schema-core.html#section-7.7.1.1
 
+const refKey = Symbol('ref');
+
 export class Schema {
     constructor(schema){
         this.schema = schema;
         this.id = schema.$id;
+        //this.findIds();
     }
     validate(value) {
         return !this.error(value);
@@ -25,8 +28,11 @@ export class Schema {
     #_deref(schema) {
         if (!schema) return;
         for (const [prop, value] of Object.entries(schema)) {
+            //if (prop === '_$ref') continue; // dont deref loaded refs
             if (prop === '$ref') {
-                if (typeof value === 'object') continue; // already dereferenced
+if (typeof value !== 'string') continue; // hack todo
+                if (schema[refKey]) continue; // already dereferenced
+                //if (typeof value === 'object') continue; // already dereferenced
                 let subSchema;
                 if (value[0] !== '#') {
                     const url = this.refToUrl(value);
@@ -39,7 +45,7 @@ export class Schema {
                     console.error('Subschema not found', value, schema);
                     continue;
                 }
-                schema.$ref = subSchema;
+                schema[refKey] = subSchema;
             } else if (prop === 'properties') {
                 for (const propSchema of Object.values(value)) {
                     this.#_deref(propSchema);
@@ -65,13 +71,11 @@ export class Schema {
     }
     #_findIds(schema, parentId) {
         if (!schema) return;
-        for (const [prop, value] of Object.entries(schema)) {
-            if (prop === '$id') {
-                const url = new URL(value, parentId);
-                schema[prop] = url.toString(); // replace with absolute url
-                if (AllSchemas.has(url.href)) continue;
+        if (schema.$id && typeof schema.$id === 'string') { // hack, we need to check only real schemas
+            const url = new URL(schema.$id, parentId);
+            schema.$id = url.toString(); // replace with absolute url
+            if (!AllSchemas.has(url.href)) {
                 const IdSchema = new Schema(schema);
-
                 //AllSchemas.set(url.href, IdSchema.deref().then(() => IdSchema)); // we can not immediately deref as it will be infinite loop, but the Schema-Promise should be there
                 const promise = new Promise((resolve) => {
                     queueMicrotask(() => {
@@ -80,21 +84,26 @@ export class Schema {
                     });
                 });
                 AllSchemas.set(url.href, promise);
-            } else if (prop === 'const') {
-                return;
+            }
+        }
+        for (const [prop, value] of Object.entries(schema)) {
+            if (prop === 'const') {
+                continue; //return; // return???
             } else if (prop === 'properties') {
                 for (const propSchema of Object.values(value)) {
                     this.#_findIds(propSchema, schema.$id || parentId);
                 }
-            } else if (Array.isArray(value)) {
-                // no need to check array items
+            }
+            if (Array.isArray(value)) {
+                //for (const item of value) this.#_findIds(item, schema.$id || parentId);
+                // no need to check array items, sure?
             } else if (typeof value === 'object') {
                 this.#_findIds(value, schema.$id || parentId);
             }
         }
     }
 
-    async #loadRefs(){ // and anchors and ids
+    async #loadRefs(){ // and anchors
         this.anchors = new Map([['', this.schema]]);
 
         const promises = this.#_loadRefs(this.schema);
@@ -108,11 +117,9 @@ export class Schema {
     #_loadRefs(schema) {
         const refs = new Map();
         if (!schema) return refs;
-
+        if (schema.$anchor) this.anchors.set(schema.$anchor, schema);
         for (const [prop, value] of Object.entries(schema)) {
-            if (prop === '$anchor') {
-                this.anchors.set(value, schema);
-            }
+            if (prop === '$anchor') this.anchors.set(value, schema);
             if (prop === 'enum') continue;
             if (prop === 'const') continue;
             if (typeof value === 'object') {
@@ -122,7 +129,7 @@ export class Schema {
                 continue;
             }
             if (prop === '$ref') {
-                if (typeof value === 'object') continue; // already dereferenced
+                if (schema[refKey]) continue; // already dereferenced
                 if (value[0] !== '#') {
                     const url = this.refToUrl(value);
                     refs.set(url, loadSchema(url));
@@ -132,6 +139,7 @@ export class Schema {
         return refs;
     }
     refToUrl(ref) {
+        console.log(ref)
         ref = ref.replace(/#.*/, '');
         // absolute url
         if (ref.match(/^[a-z]+:/)) return ref;
@@ -349,8 +357,8 @@ const typeValidators = {
 }
 
 const validators = {
-    *$ref(subSchema, value) {
-        return yield* errors(value, subSchema);
+    *$ref(url, value, schema) {
+        return yield* errors(value, schema[refKey]);
     },
     enum: (allowed, value) => {
         for (const a of allowed) if (deepEqual(a, value)) return true;
