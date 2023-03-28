@@ -32,7 +32,7 @@ import {Schema} from 'https://cdn.jsdelivr.net/gh/nuxodin/schema.js@x.x.x/schema
 ## Todo
 
 - Better error messages (with schema path)  
-- Fix a few bugs in the test suite: [link](https://rawcdn.githack.com/nuxodin/schema.js/d640d0ec40a42343367bc3fafc566010edb53947/tests/test-suite.html)
+- Fix a few bugs in the test suite: [link](http://gcdn.li/nuxodin/schema.js/tests/test-suite.html)
 
 ## About
 
