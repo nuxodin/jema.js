@@ -5,7 +5,7 @@ JSONSchema validator for deno and the browser
 
 🚀 Performant  
 🕊️ Lightweight (< 4kb brotli)  
-🤝 Works in the Browser and deno (and node.js at the moment)
+🤝 Works in the Browser and deno (no node.js at the moment)  
 📦 No dependencies  
 🆗 JSONSchema draft-2020-12 (only this)  
 
