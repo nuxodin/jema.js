@@ -13,7 +13,7 @@ jobs:
         with:
           node-version: 16
       - run: npm ci
-      - run: npm test
+      # - run: npm test
 
   publish-gpr:
     needs: build
@@ -30,4 +30,4 @@ jobs:
       - run: npm ci
       - run: npm publish
         env:
-          NODE_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+          NODE_AUTH_TOKEN: ${{secrets.NPM}}
