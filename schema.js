@@ -10,7 +10,7 @@ export class Schema {
         this.schema = schema;
         this.id = schema.$id;
 
-        this.anchors = new Map([['', this.schema]]);
+        this.anchors = new Map([['', this.schema]]); // including itself as "#"
         this.dynAnchors = new Map();
 
         this.#findAnchors(this.schema);
@@ -33,13 +33,13 @@ export class Schema {
         for (const sub of subSchemas(schema)) this.#findAnchors(sub);
     }
     #findDynAnchors(schema) {
-        if (schema.$id && schema.$id !== this.id) return; // dont stop at a new scope
+        if (schema.$id && schema.$id !== this.id) return;
         if (schema.$dynamicAnchor && !this.dynAnchors.has(schema.$dynamicAnchor)) this.dynAnchors.set(schema.$dynamicAnchor, schema);
         for (const sub of subSchemas(schema)) this.#findDynAnchors(sub);
     }
 
 
-    #findIds(schema, base) {
+    #findIds(schema, base) { // only root-schema has to do it
         if (schema.$id) {
             const url = new URL(schema.$id, base);
             base = schema.$id = url.toString();
@@ -55,14 +55,13 @@ export class Schema {
                 AllSchemas.set(url.href, promise);
             }
         }
-        for (const sSchema of subSchemas(schema)) {
-            this.#findIds(sSchema, base);
-        }
+        for (const sSchema of subSchemas(schema)) this.#findIds(sSchema, base);
     }
 
 
     async deref() {
-        this.#findIds(this.schema, location.href); // ok?
+        const myLocation = window?.location?.href || 'http://localhost/'; // TODO?
+        this.#findIds(this.schema, myLocation); // ok?
 
         const promises = this.#loadRefs(this.schema);
         this.foraignSchemas = await promisesAllMap(promises);
@@ -73,31 +72,16 @@ export class Schema {
         //if (schema.$id && schema.$id !== this.id) return;
         if (schema.$ref && !schema[refKey]) {
             const ref = schema.$ref;
-            let refSchema;
-            if (ref[0] !== '#') {
-                const url = this.refToUrl(ref);
-                const foraignSchema = this.foraignSchemas.get(url);
-                refSchema = foraignSchema.walk('#'+(ref.split('#')[1]||''));
-                //refSchema = foraignSchema.walk('#'+(ref.split('#')[1])); // todo?
-            } else {
-                refSchema = this.walk(ref);
-            }
-            if (refSchema == null) console.error('Subschema not found', ref, schema);
+            const refSchema = this.walk(ref);
+            if (refSchema == null) console.error('$ref-schema not found', ref, schema);
             schema[refKey] = refSchema;
         }
 
-        // // dynamicRef
+        // dynamicRef
         if (schema.$dynamicRef && !schema[refKey]) {
             const ref = schema.$dynamicRef;
-            let refSchema;
-            if (ref[0] !== '#') {
-                // const url = this.refToUrl(ref);
-                // const foraignSchema = this.foraignSchemas.get(url);
-                // refSchema = foraignSchema.walk('#'+(ref.split('#')[1]||''));
-            } else {
-                refSchema = this.walk(ref);
-            }
-            //if (refSchema == null) console.error('Subschema not found', ref, schema);
+            const refSchema = this.walk(ref);
+            if (refSchema == null) console.error('$dynamicRef-schema not found', ref, schema);
             schema[refKey] = refSchema;
         }
 
@@ -125,8 +109,18 @@ export class Schema {
 
 
 
-    walk(fullpath, options) {
-        let [anchor, ...path] = fullpath.split('/');
+    walk(ref, options) {
+
+        if (ref[0] !== '#') { // walk an other schema
+            const url = this.refToUrl(ref);
+            const foraignSchema = this.foraignSchemas.get(url);
+            if (!foraignSchema) {
+                console.warn('foraignSchema not found', url, ref);
+            }
+            return foraignSchema.walk('#'+(ref.split('#')[1]||''));
+        }
+
+        let [anchor, ...path] = ref.split('/');
         anchor = anchor.substring(1);
 
         let subSchema;
@@ -141,9 +135,8 @@ export class Schema {
     }
     refToUrl(ref) {
         ref = ref.replace(/#.*/, '');
-        if (ref.match(/^[a-z]+:/)) return ref; // absolute url
-        if (ref[0] === '/') return new URL(this.id).origin + ref; // origin-relative path
-        return this.id.replace(/\/[^/]*$/, '') + '/' + ref; // relative url
+        const url = new URL(ref, this.id);
+        return url.toString();
     }
 }
 
@@ -195,10 +188,7 @@ let stopCollectingEvaluated = false; // for inside "not"
 export function *errors (value, schema){
     if (schema === false) { yield 'Schema is false'; return; }
     if (schema === true) return;
-    if (typeof schema !== 'object') {
-        console.error('Schema is not an object', schema);
-        return;
-    }
+    if (typeof schema !== 'object') { console.error('Schema is not an object'); return; }
     let type = typeof value;
     if (value === null) type = 'null';
     if (Array.isArray(value)) type = 'array';
@@ -268,8 +258,6 @@ const relevantFor = {
     format: 'string',
     contentEncoding: 'string',
 }
-
-
 
 const typeValidators = {
     *object(schema, value) {
@@ -398,16 +386,15 @@ const typeValidators = {
 
 const validators = {
     *$ref(url, value, schema) {
-        if (!(refKey in schema)) {
-            console.error(`Defef schema first: ${url}`);
-            return;
-        }
+        const refSchema = schema[refKey];
+        if (refSchema == null) console.error('dynamicRef: no schema found, deref() called?', url);
         return yield* errors(value, schema[refKey]);
     },
     *$dynamicRef(url, value, schema) {
+        console.log(currentSchema.id, url)
         const dynSchema = currentSchema.walk(url, {dynamic:true});
         const subSchema = dynSchema || schema[refKey];
-        if (!subSchema) console.error('dynamicRef: no schema found', currentSchema, url);
+        if (subSchema == null) console.error('dynamicRef: no schema found, deref() called?', url, currentSchema);
         return yield* errors(value, subSchema);
     },
     enum: (allowed, value) => {

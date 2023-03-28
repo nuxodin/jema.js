@@ -10,34 +10,44 @@
 
 <script type=module>
 import {Schema} from '../schema.js';
-import {dump} from 'https://cdn.jsdelivr.net/gh/nuxodin/dump.js@x/mod.min.js';
+import {dump} from 'https://cdn.jsdelivr.net/gh/nuxodin/dump.js@main/mod.min.js';
 //import {dump} from '../../dump.js/mod.js';
 
 
 const s1 = new Schema({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$id": "https://test.json-schema.org/dynamic-resolution-ignores-anchors/root",
-            "$ref": "list",
+            "$id": "https://test.json-schema.org/dynamic-ref-with-multiple-paths/main",
             "$defs": {
-                "foo": {
-                    "$anchor": "items",
-                    "type": "string"
-                },
-                "list": {
-                    "$id": "list",
-                    "type": "array",
-                    "items": { "$dynamicRef": "#items" },
-                    "$defs": {
-                      "items": {
-                          "$comment": "This is only needed to satisfy the bookending requirement",
-                          "$dynamicAnchor": "items"
-                      }
+                "inner": {
+                    "$id": "inner",
+                    "$dynamicAnchor": "foo",
+                    "title": "inner",
+                    "additionalProperties": {
+                        "$dynamicRef": "#foo"
                     }
                 }
+            },
+            "if": {
+                "propertyNames": {
+                    "pattern": "^[a-m]"
+                }
+            },
+            "then": {
+                "title": "any type of node",
+                "$id": "anyLeafNode",
+                "$dynamicAnchor": "foo",
+                "$ref": "inner"
+            },
+            "else": {
+                "title": "integer node",
+                "$id": "integerNode",
+                "$dynamicAnchor": "foo",
+                "type": [ "object", "integer" ],
+                "$ref": "inner"
             }
         });
 
-const data = ["foo", 42];
+const data = { "november": 1.1 };
 
 
 
