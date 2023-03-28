@@ -1,5 +1,5 @@
 {
-  "name": "j-schema",
+  "name": "jema.js",
   "description": "JSONSchema handling / validator",
   "version": "1.1.1",
   "devDependencies": {},
