@@ -10,436 +10,74 @@
 
 <script type=module>
 import {Schema} from '../schema.js';
+import {dump} from 'https://cdn.jsdelivr.net/gh/nuxodin/dump.js@x/mod.min.js';
+//import {dump} from '../../dump.js/mod.js';
 
 
-//"description": "Location-independent identifier with base URI change in subschema
 const s1 = new Schema({
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "http://example.com/a.json",
-  "$defs": {
-    "x": {
-      "$id": "http://example.com/b/c.json",
-      "not": {
-        "$defs": {
-          "y": {
-            "$id": "http://example.com/d.json",
-            "type": "number"
-          }
-        }
-      }
-    }
-  },
-  "allOf": [
-    {
-      "$ref": "http://example.com/b/d.json"
-    }
-  ]
-});
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "https://test.json-schema.org/dynamic-resolution-ignores-anchors/root",
+            "$ref": "list",
+            "$defs": {
+                "foo": {
+                    "$anchor": "items",
+                    "type": "string"
+                },
+                "list": {
+                    "$id": "list",
+                    "type": "array",
+                    "items": { "$dynamicRef": "#items" },
+                    "$defs": {
+                      "items": {
+                          "$comment": "This is only needed to satisfy the bookending requirement",
+                          "$dynamicAnchor": "items"
+                      }
+                    }
+                }
+            }
+        });
+
+const data = ["foo", 42];
+
+
+
+
+
+
+dataOut.innerHTML = dump(data, {depth: 10, inherited: true, symbols: true });
 
 await s1.deref();
-console.log(s1)
+
+schemaOut.innerHTML = dump(s1, {depth: 10, inherited: true, symbols: true });
+
+const errors = [...s1.errors(data)];
+
+errorsOut.innerHTML = dump(errors, {depth: 10, inherited: true, symbols: true });
+
+for (const [key, schema] of AllSchemas) {
+  const foraign = await schema;
+  allSchemas.innerHTML += dump(foraign, {depth: 10, inherited: true, symbols: true });
+}
+
+
+
 console.log(
     s1.validate(1),
     s1.validate("a")
 );
-
-/*
-        "description": "Location-independent identifier with base URI change in subschema",
-        "schema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$id": "http://localhost:1234/draft2020-12/root",
-            "$ref": "http://localhost:1234/draft2020-12/nested.json#foo",
-            "$defs": {
-                "A": {
-                    "$id": "nested.json",
-                    "$defs": {
-                        "B": {
-                            "$anchor": "foo",
-                            "type": "integer"
-                        }
-                    }
-                }
-            }
-        },
-        "tests": [
-            {
-                "data": 1,
-                "description": "match",
-                "valid": true
-            },
-            {
-                "data": "a",
-                "description": "mismatch",
-                "valid": false
-            }
-        ]
-    },
-    {
-        "description": "$anchor inside an enum is not a real identifier",
-        "comment": "the implementation must not be confused by an $anchor buried in the enum",
-        "schema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$defs": {
-                "anchor_in_enum": {
-                    "enum": [
-                        {
-                            "$anchor": "my_anchor",
-                            "type": "null"
-                        }
-                    ]
-                },
-                "real_identifier_in_schema": {
-                    "$anchor": "my_anchor",
-                    "type": "string"
-                },
-                "zzz_anchor_in_const": {
-                    "const": {
-                        "$anchor": "my_anchor",
-                        "type": "null"
-                    }
-                }
-            },
-            "anyOf": [
-                { "$ref": "#/$defs/anchor_in_enum" },
-                { "$ref": "#my_anchor" }
-            ]
-        },
-        "tests": [
-            {
-                "description": "exact match to enum, and type matches",
-                "data": {
-                    "$anchor": "my_anchor",
-                    "type": "null"
-                },
-                "valid": true
-            },
-            {
-                "description": "in implementations that strip $anchor, this may match either $def",
-                "data": {
-                    "type": "null"
-                },
-                "valid": false
-            },
-            {
-                "description": "match $ref to $anchor",
-                "data": "a string to match #/$defs/anchor_in_enum",
-                "valid": true
-            },
-            {
-                "description": "no match on enum or $ref to $anchor",
-                "data": 1,
-                "valid": false
-            }
-        ]
-    },
-    {
-        "description": "same $anchor with different base uri",
-        "schema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$id": "http://localhost:1234/draft2020-12/foobar",
-            "$defs": {
-                "A": {
-                    "$id": "child1",
-                    "allOf": [
-                        {
-                            "$id": "child2",
-                            "$anchor": "my_anchor",
-                            "type": "number"
-                        },
-                        {
-                            "$anchor": "my_anchor",
-                            "type": "string"
-                        }
-                    ]
-                }
-            },
-            "$ref": "child1#my_anchor"
-        },
-        "tests": [
-            {
-                "description": "$ref resolves to /$defs/A/allOf/1",
-                "data": "a",
-                "valid": true
-            },
-            {
-                "description": "$ref does not resolve to /$defs/A/allOf/0",
-                "data": 1,
-                "valid": false
-            }
-        ]
-    },
-    {
-        "description": "non-schema object containing an $anchor property",
-        "schema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$defs": {
-                "const_not_anchor": {
-                    "const": {
-                        "$anchor": "not_a_real_anchor"
-                    }
-                }
-            },
-            "if": {
-                "const": "skip not_a_real_anchor"
-            },
-            "then": true,
-            "else" : {
-                "$ref": "#/$defs/const_not_anchor"
-            }
-        },
-        "tests": [
-            {
-                "description": "skip traversing definition for a valid result",
-                "data": "skip not_a_real_anchor",
-                "valid": true
-            },
-            {
-                "description": "const at const_not_anchor does not match",
-                "data": 1,
-                "valid": false
-            }
-        ]
-    },
-    {
-        "description": "invalid anchors",
-        "comment": "Section 8.2.2",
-        "schema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$ref": "https://json-schema.org/draft/2020-12/schema"
-        },
-        "tests": [
-            {
-                "description": "MUST start with a letter (and not #)",
-                "data": { "$anchor" : "#foo" },
-                "valid": false
-            },
-            {
-                "description": "JSON pointers are not valid",
-                "data": { "$anchor" : "/a/b" },
-                "valid": false
-            },
-            {
-                "description": "invalid with valid beginning",
-                "data": { "$anchor" : "foo#something" },
-                "valid": false
-            }
-        ]
-    }
-]
-*/
-
-
-// const s = new Schema({
-//     "$schema": "https://json-schema.org/draft/2020-12/schema",
-//     "$ref": "https://json-schema.org/draft/2020-12/schema"
-// });
-
-// console.log(s)
-// await s.deref();
-// console.log(s)
-
-// s.validate({"$defs": {"foo": {"type": "integer"}}});
-
-
-
-
-
-
-// const schema = new Schema({
-//     $schema: "http://json-schema.org/draft-07/schema#",
-//     title: "geoline",
-//     type: "object",
-//     properties: {
-//         from: {
-//             description: "starting coordinate",
-//             $ref: "#/definitions/coordinate",
-//             properties: {
-//                 altitude: {
-//                     type: "number"
-//                 }
-//             }
-//         },
-//         to: {
-//             description: "ending coordinate",
-//             $ref: "#/definitions/coordinate"
-//         },
-//     },
-//     definitions: {
-//         coordinate: {
-//             properties: {
-//                 latitude: {
-//                     $ref: 'https://cdn.jsdelivr.net/gh/nuxodin/schema.js@main/defs/main.json#/$defs/uint8',
-//                 },
-//                 longitude: {
-//                     type: "number"
-//                 }
-//             },
-//             required: ["latitude", "longitude"]
-//         },
-//     }
-// });
-
-// await schema.deref();
-// console.log(schema.schema)
-
-
-
-
-// // self reference
-// const schema2 = new Schema({
-//   "type": "object",
-//   "properties": {
-//     "name": { "type": "string" },
-//     "children": {
-//       "type": "array",
-//       "items": { "$ref": "#" }
-//     }
-//   }
-// });
-// await schema2.deref();
-// console.log(schema2)
-// const es = schema2.errors({
-//     name: 'root',
-//     children: [{
-//             name: 'child1',
-//             children: [],
-//         },{
-//             name: 'child2',
-//             children: [{
-//                     name: 'child2.1',
-//                     children: 'should fail',
-//                 },{
-//                     name: 99,
-//                 },
-//             ],
-//         },
-//     ]
-// });
-// console.log([...es])
-
-
-// const symbol = {
-//     bild: Symbol('bild'),
-//     root: Symbol('root'),
-//     parent: Symbol('parent'),
-//     resolveRefs: Symbol('resolveRefs'),
-//     path: Symbol('path'),
-//     key: Symbol('key'),
-// };
-
-// const SchemaProto = {
-//     [symbol.bild](){
-//         for (const [key, value] of Object.entries(this)) {
-//             if (value instanceof Object) {
-//                 Object.setPrototypeOf(value, SchemaProto);
-//                 value[symbol.parent] = this;
-//                 value[symbol.key] = key;
-//                 value[symbol.bild]();
-//             }
-//         }
-//     },
-//     [symbol.root](){
-//         if (!this[symbol.parent]) return this;
-//         return this[symbol.parent][symbol.root]();
-//     },
-//     path: function() { // zzz
-//         if (!this[symbol.parent]) return '';
-//         return this[symbol.parent].path() + '/' + this[symbol.key];
-//     },
-//     [symbol.path](){
-//         if (!this[symbol.parent]) return '';
-//         return this[symbol.parent][symbol.path]() + '/' + this[symbol.key];
-//     },
-//     [symbol.resolveRefs](){
-//         for (const [key, value] of Object.entries(this)) {
-//             if (key === '$ref') {
-//                 const ref = value.split('/');
-//                 let schema = this[symbol.root]();
-//                 for (const part of ref) {
-//                     if (part === '#') continue;
-//                     schema = schema[part];
-//                 }
-//                 // Object.setPrototypeOf(this, schema); all keys will be overwritten if it has owns. but it need to mixin the referrenced schema
-//             }
-//         }
-//         if ('properties' in this) {
-//             for (const [key, child] of Object.entries(this.properties)) {
-//                 child[symbol.resolveRefs]();
-//             }
-//         }
-//     }
-// };
-// Object.setPrototypeOf(SchemaProto, null);
-// Object.defineProperties(SchemaProto, {
-//     type: {
-//         get() {
-//             if ('properties' in this) return 'object';
-//             if ('minProperties' in this) return 'object';
-//             if ('maxProperties' in this) return 'object';
-//             if ('required' in this) return 'object';
-//             if ('additionalProperties' in this) return 'object';
-//             if ('propertyNames' in this) return 'object';
-//             //if ('dependencies' in this) return 'object';
-//             if ('patternProperties' in this) return 'object';
-//             if ('items' in this) return 'array';
-//             if ('minItems' in this) return 'array';
-//             if ('maxItems' in this) return 'array';
-//             if ('uniqueItems' in this) return 'array';
-//             if ('contains' in this) return 'array';
-//             if ('minimum' in this) return 'number';
-//             if ('maximum' in this) return 'number';
-//             if ('exclusiveMinimum' in this) return 'number';
-//             if ('exclusiveMaximum' in this) return 'number';
-//             if ('multipleOf' in this) return 'number';
-//             if ('minLength' in this) return 'string';
-//             if ('maxLength' in this) return 'string';
-//             if ('pattern' in this) return 'string';
-//             if ('format' in this) return 'string';
-//             return undefined;
-//         },
-//     },
-// });
-
-
-
-// const demoschema = {
-//     $schema: "http://json-schema.org/draft-07/schema#",
-//     title: "geoline",
-//     type: "object",
-//     properties: {
-//         from: {
-//             description: "starting coordinate",
-//             $ref: "#/definitions/coordinate",
-//             properties: {
-//                 altitude: {
-//                     type: "number"
-//                 }
-//             }
-//         },
-//         to: {
-//             description: "ending coordinate",
-//             $ref: "#/definitions/coordinate"
-//         },
-//     },
-//     definitions: {
-//         coordinate: {
-//             properties: {
-//                 latitude: {
-//                     type: "number"
-//                 },
-//                 longitude: {
-//                     type: "number"
-//                 }
-//             },
-//             required: ["latitude", "longitude"]
-//         },
-//     }
-// };
-
-// const schema = Object.setPrototypeOf(demoschema, SchemaProto);
-// schema[symbol.bild]();
-// schema[symbol.resolveRefs]();
-// console.log(schema);
-
-
 </script>
+
+<h3>schema</h3>
+
+<h2>Schema</h2>
+<pre id="schemaOut"></pre>
+
+<h2>Data</h2>
+<pre id="dataOut"></pre>
+
+<h2>Errors</h2>
+<pre id="errorsOut"></pre>
+
+
+<h2>All Schemas</h2>
+<pre id="allSchemas"></pre>

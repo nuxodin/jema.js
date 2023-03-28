@@ -35,7 +35,6 @@ const files = [
     'defs.json',
     'dependentRequired.json',
     'dependentSchemas.json',
-    //'dynamicRef.json',
     'enum.json',
     'exclusiveMaximum.json',
     'exclusiveMinimum.json',
@@ -63,7 +62,6 @@ const files = [
     'properties.json',
     'propertyNames.json',
     'ref.json',
-    //'refRemote.json',
     'required.json',
     'type.json',
     'unevaluatedItems.json',
@@ -71,6 +69,8 @@ const files = [
     'uniqueItems.json',
     'unknownKeyword.json',
     //'vocabulary.json',
+    'refRemote.json',
+    'dynamicRef.json',
 
     // 'optional/bignum.json',
     // //'optional/cross-draft.json',
@@ -121,6 +121,24 @@ Promise.all(promises.values()).then( async (result) => {
         const file = files[index];
 
         for (const test of data) {
+            const original = structuredClone(test.schema);
+
+
+            // http://localhost:1234 = https://cdn.jsdelivr.net/gh/nuxodin/JSON-Schema-Test-Suite@2.0.1/remotes/
+            function reqursiveRewrite(schema) {
+                for (const key in schema) {
+                    if (typeof schema[key] === 'object') {
+                        reqursiveRewrite(schema[key]);
+                    }
+                    if (typeof schema[key] === 'string') {
+                        schema[key] = schema[key].replace('http://localhost:1234', 'https://cdn.jsdelivr.net/gh/nuxodin/JSON-Schema-Test-Suite@2.0.1/remotes');
+                    }
+                }
+            }
+            reqursiveRewrite(test.schema);
+
+
+
 
             const schema = new Schema(test.schema);
 
@@ -128,8 +146,9 @@ Promise.all(promises.values()).then( async (result) => {
                 await schema.deref();
             } catch (e) {
                 console.log('deref error ', file, '------------------------');
-                console.log('schema', test.schema);
                 console.dir('error', e);
+                console.log('schema original', original);
+                console.log('schema computed', schema.schema);
             }
 
             describe(test.description, () => {
@@ -146,8 +165,8 @@ Promise.all(promises.values()).then( async (result) => {
                             console.log('------------------------error------------------------');
                             console.log(subtest.description);
                             console.log('data:', subtest.data);
-                            console.log('schema original:', test.schema);
-                            console.log('schema computed:', schema);
+                            console.log('schema original:', original);
+                            console.log('schema computed:', schema.schema);
                             console.log('expected:', subtest.valid);
                             console.log('errors', errors);
                         }
