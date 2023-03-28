@@ -1,4 +1,4 @@
-# schema.js
+# jema.js
 JSONSchema validator
 
 ## Features
@@ -26,13 +26,13 @@ schema.errors('3') // all errors (iterator);
 ## Install
 
 ```javascript
-import {Schema} from 'https://cdn.jsdelivr.net/gh/nuxodin/schema.js@x.x.x/schema.min.js';
+import {Schema} from 'https://cdn.jsdelivr.net/gh/nuxodin/jema.js@x.x.x/schema.min.js';
 ```
 
 ## Todo
 
 - Better error messages (with schema path)  
-- Fix a few bugs in the test suite: [link](http://gcdn.li/nuxodin/schema.js/tests/test-suite.html)
+- Fix a few bugs in the test suite: [link](http://gcdn.li/nuxodin/jema.js/tests/test-suite.html)
 
 ## About
 
