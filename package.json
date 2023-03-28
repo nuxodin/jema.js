@@ -2,9 +2,25 @@
   "name": "j-schema",
   "description": "JSONSchema handling / validator",
   "version": "1.1.1",
-  "dependencies": {},
   "devDependencies": {},
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
-  },  
+    "@tobias_buschor:registry": "https://npm.pkg.github.com"
+  },
+  "main": "schema.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nuxodin/schema.js.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/nuxodin/schema.js/issues"
+  },
+  "homepage": "https://github.com/nuxodin/schema.js#readme"
 }
