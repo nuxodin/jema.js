@@ -7,17 +7,17 @@
     "@tobias_buschor:registry": "https://npm.pkg.github.com"
   },
   "main": "schema.js",
-  "directories": {
+  "zzz-directories": {
     "test": "tests"
   },
-  "scripts": {
+  "zzz-scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nuxodin/schema.js.git"
   },
-  "author": "",
+  "author": "Tobias Buschor",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/nuxodin/schema.js/issues"
