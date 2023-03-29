@@ -6,7 +6,6 @@ const refKey = Symbol('ref');
 const defaultLocation = window?.location?.href || 'http://localhost/'; // OK? TODO?
 let currentSchema = null;
 
-
 // AllSchemas is a global map of all loaded schemas
 export const AllSchemas = new Map();
 function loadSchema(url) {
@@ -85,7 +84,6 @@ export class Schema {
             if (refSchema == null) console.error('$ref-schema not found', ref, schema);
             schema[refKey] = refSchema;
         }
-
         // dynamicRef
         if (schema.$dynamicRef && !schema[refKey]) {
             const ref = schema.$dynamicRef;
@@ -156,6 +154,7 @@ export function *errors (value, schema){
     if (schema === false) { yield 'Schema is false'; return; }
     if (schema === true) return;
     if (typeof schema !== 'object') { console.error('Schema is not an object'); return; }
+
     let type = typeof value;
     if (value === null) type = 'null';
     if (Array.isArray(value)) type = 'array';
@@ -167,7 +166,7 @@ export function *errors (value, schema){
     }
     if (type === 'array' && 'unevaluatedItems' in schema) {
         if (!unevaluatedPropertiesFor.has(value)) {
-            // array to map (index to key) so we can remove evaluated items
+            // array to map (index to key) so we can remove evaluated items, do we only need a set of indexes?
             const map = new Map(value.map((obj, i) => [i, obj]));
             unevaluatedPropertiesFor.set(value, map);
         }
@@ -175,20 +174,14 @@ export function *errors (value, schema){
 
     for (const prop of Object.keys(schema)) {
         const validator = validators[prop];
-        if (validator) {
-            if (relevantFor[prop] && relevantFor[prop] !== type) continue;
+        if (!validator) continue;
+        if (relevantFor[prop] && relevantFor[prop] !== type) continue;
 
-            if (validator instanceof GeneratorFunction) {
-                yield* validator(schema[prop], value, schema);
-            } else {
-                const valide = validator(schema[prop], value, schema);
-                if (!valide) {
-                    try {
-                        yield `"${value}" does not match ${prop}:${schema[prop]}`; // value to sting can fail
-                    } catch {
-                        yield `"object does not match ${prop}:${schema[prop]}`;
-                    }
-                }
+        if (validator instanceof GeneratorFunction) {
+            yield* validator(schema[prop], value, schema);
+        } else {
+            if (!validator(schema[prop], value, schema)) {
+                yield `"${value}" does not match ${prop}:${schema[prop]}`; // value to sting can fail
             }
         }
     }
@@ -253,6 +246,7 @@ const relevantFor = {
     format: 'string',
     contentEncoding: 'string',
 }
+
 
 const typeValidators = {
     *object(schema, value) {
@@ -323,10 +317,10 @@ const typeValidators = {
     *array(schema, value) {
 
         if ('minItems' in schema) {
-            if (value.length < schema.minItems) yield "Array has less items than minItems";
+            if (value.length < schema.minItems) yield "less array-items than minItems";
         }
         if ('maxItems' in schema) {
-            if (value.length > schema.maxItems) yield "Array has more items than maxItems";
+            if (value.length > schema.maxItems) yield "more array-items than maxItems";
         }
 
         const uniqueSet = schema.uniqueItems && new Set();
@@ -360,7 +354,7 @@ const typeValidators = {
                 if (match) {
                     numContains++;
                     additional = false;
-                } // TODO: early exit? numContains > maxContains => error, minContains >= numContains => no need to check more
+                } // TODO: early exits?
             }
 
             if (!additional) {
@@ -380,6 +374,19 @@ const typeValidators = {
 
 
 const validators = {
+
+    // meta data
+    // title() {},
+    // description() {},
+    // default() {},
+    // readOnly() {},
+    // deprecated(deprecated, value, schema) {
+    //     if (deprecated) console.error("deprecated (value: " + value + "))", schema);
+    //     return true;
+    // },
+    // writeOnly() {},
+    // examples() {},
+
     *$ref(url, value, schema) {
         const refSchema = schema[refKey];
         if (refSchema == null) console.error('dynamicRef: no schema found, deref() called?', url);
@@ -400,6 +407,7 @@ const validators = {
     type(type, value){
         if (Array.isArray(type)) {
             for (const t of type) if (validators.type(t, value)) return true;
+            return;
         }
         if (type === 'integer' && Number.isInteger(value)) return true;
         if (type === 'number'  && typeof value === 'number' && isFinite(value)) return true;
@@ -412,7 +420,7 @@ const validators = {
 
     // number
     multipleOf(mOf, value){
-        if (Number.isInteger(value) && Number.isInteger(1 / mOf)) return true; // all integers are multiples of 0.5, if overflow is handled
+        if (Number.isInteger(value) && Number.isInteger(1 / mOf)) return true;
         if (Number.isInteger(value / mOf)) return true;
     },
     minimum: (min,value) => value >= min,
@@ -445,23 +453,13 @@ const validators = {
             case 'json-pointer': return /^(?:\/(?:[^~/]|~0|~1)*)*$/.test(value);
             case 'relative-json-pointer': return /^(?:0|[1-9][0-9]*)(?:#|(?:\/(?:[^~/]|~0|~1)*)*)$/.test(value);
             case 'regex': try { new RegExp(value, 'u'); return true; } catch { return false; }
-            default: console.warn('jsons schema unknown format: '+format);
+            default: console.warn('json schema unknown format: '+format);
         }
         return true;
     },
-    contentEncoding(/*encoding, value*/) {
-        return true;
-        // switch (encoding) {
-        //     // 7bit, 8bit, binary, quoted-printable, base16, base32, and base64
-        //     case '7bit': return /^[\x00-\x7F]+$/.test(value); // 0-127 (ascii)
-        //     case '8bit': return /^[\x00-\xFF]+$/.test(value); // 0-255 (extended ascii)
-        //     case 'binary': return /^[\x00-\xFF]+$/.test(value); // 0-255
-        //     case 'quoted-printable': return /^[\x09\x20-\x3C\x3E-\x7E]+$/.test(value); // 9, 32-60, 62-126
-        //     case 'base16': return /^[0-9a-fA-F]+$/.test(value); // 0-9, a-f, A-F
-        //     case 'base32': return /^[0-9a-vA-V]+$/.test(value); // 0-9, a-v, A-V
-        //     case 'base64': return /^[0-9a-zA-Z+/=]+$/.test(value); // 0-9, a-z, A-Z, +, /
-        // }
-    },
+    // contentEncoding() {},
+    // contentMediaType () {},
+    // contentSchema () {},
 
     // combinators
     *allOf(allOf, value) {
@@ -472,7 +470,6 @@ const validators = {
         let any = false;
         for (const subSchema of anyOf) {
             const ok = errors(value, subSchema).next().done; // is it intentional to stop evaluating on first match?
-            //const ok = [...errors(value, subSchema)].length === 0;
             if (ok) {
                 if (!collecting) return true;
                 any = true;
@@ -484,7 +481,6 @@ const validators = {
         let pass = 0;
         for (const subSchema of oneOf) {
             pass += errors(value, subSchema).next().done ? 1 : 0; // is it intentional to stop evaluating on first match?
-            //pass += [...errors(value, subSchema)].length ? 0 : 1;
             if (pass > 1) return false;
         }
         return pass === 1;
@@ -495,10 +491,6 @@ const validators = {
         stopCollectingEvaluated = false;
         return !ok;
     },
-    deprecated(deprecated, value, schema) {
-        if (deprecated) console.error("deprecated (value: " + value + "))", schema);
-        return true;
-    },
     *if(ifSchema, value, schema) {
         if (errors(value, ifSchema).next().done) {
             if (schema.then != null) yield* errors(value, schema.then);
@@ -508,24 +500,7 @@ const validators = {
     },
 };
 
-
-// makes the value unique, objects and arrays are stringified
-function uniqueValueIgnoreKeyOrder(value) {
-    if (value == null || typeof value !== 'object') return value;
-    const copy = deepCopyObjectAndOrderKeys(value);
-    return 'hopeNoOneWillEverUseString'+JSON.stringify(copy);
-}
-function deepCopyObjectAndOrderKeys(value) {
-    if (value == null || typeof value !== 'object') return value;
-    if (Array.isArray(value)) return value.map(deepCopyObjectAndOrderKeys);
-    const copy = {};
-    for (const key of Object.keys(value).sort()) {
-        copy[key] = deepCopyObjectAndOrderKeys(value[key]);
-    }
-    return copy;
-}
-
-/* format validate functions */
+/* format validation functions */
 function validDate(value) {
     const x = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!x) return false;
@@ -565,7 +540,6 @@ function validDateTime(value) {
     if (!validTime(time)) return false;
     return true;
 }
-
 function isValidHostname(hostname) {
     if (!hostname || hostname.length > 255) return false;
     const regex = /^[a-zA-Z0-9\-.]+$/;
@@ -577,7 +551,6 @@ function isValidHostname(hostname) {
     }
     return true;
 }
-
 function isValidIdnHostname(hostname) {
     try { new URL('http://' + hostname); }
     catch { return false; }
@@ -586,17 +559,14 @@ function isValidIdnHostname(hostname) {
         if (x.substring(2, 4) === '--') return true;
     })
     if (lableFails) return false;
-
     // Hebrew GERSHAYIM not preceded by anything
     if (hostname.match(/(?<!.)\u05F4/)) return false;
     //Hebrew GERESH not preceded by Hebrew
     if (hostname.match(/(?<![\p{Script=Hebrew}])\u05F3/u)) return false;
-
     // Greek KERAIA not followed by anything
     //if (hostname.match(/\u0375(?!.)/)) return false;
     // Greek KERAIA not followed by Greek
     if (hostname.match(/\u0375(?![\p{Script=Greek}])/u)) return false;
-
     if (hostname.includes('\u302E')) return false;
     if (hostname.startsWith('-')) return false;
     if (hostname.endsWith('-')) return false;
@@ -640,7 +610,6 @@ function isValidEmail(value, idn) {
     }
     return /^(?!\.)("([^"\r\\]|\\["\r\\])*"|([-a-z0-9!#$%&'*+/=?^_`{|}~]|(?<!\.)\.)*)(?<!\.)$/.test(local);
 }
-
 function parseDuration(duration) {
     // use Temporal.Duration.from(duration) when it's available
     const [datePart, timePart] = duration.split('T');
@@ -656,20 +625,9 @@ function parseDuration(duration) {
     const [, hours, minutes, seconds] = timeMatches;
     if (years == null && months == null && weeks == null && days == null && hours == null && minutes == null && seconds == null) return null;
     return {years, months, weeks, days, hours, minutes, seconds};
-    // return {
-    //     years: parseInt(years??0),
-    //     months: parseInt(months??0),
-    //     weeks: parseInt(weeks??0),
-    //     days: parseInt(days??0),
-    //     hours: parseInt(hours??0),
-    //     minutes: parseInt(minutes??0),
-    //     seconds: parseInt(seconds??0),
-    // };
 }
 
-
 /* helpers */
-
 function walk(schema, parts) {
     let subSchema = schema;
     for (let part of parts) {
@@ -682,8 +640,6 @@ function walk(schema, parts) {
     }
     return subSchema;
 }
-
-
 function deepEqual(a, b) {
     if (a === b) return true;
     if (a == null && b != null) return false;
@@ -707,9 +663,6 @@ function deepEqual(a, b) {
     }
     return false;
 }
-
-const GeneratorFunction = (function*(){}).constructor;
-
 async function promisesAllMap(promises) {
     const array = await Promise.all(promises.values());
     const result = new Map();
@@ -718,3 +671,30 @@ async function promisesAllMap(promises) {
     }
     return result;
 }
+function uniqueValueIgnoreKeyOrder(value) { // makes the value unique, objects and arrays are stringified
+    if (value == null || typeof value !== 'object') return value;
+    const copy = deepCopyObjectAndOrderKeys(value);
+    return 'hopeNoOneWillEverUseString'+JSON.stringify(copy);
+}
+function deepCopyObjectAndOrderKeys(value) {
+    if (value == null || typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.map(deepCopyObjectAndOrderKeys);
+    const copy = {};
+    for (const key of Object.keys(value).sort()) {
+        copy[key] = deepCopyObjectAndOrderKeys(value[key]);
+    }
+    return copy;
+}
+const GeneratorFunction = (function*(){}).constructor;
+
+// encoding not needed?
+// switch (encoding) {
+//     // 7bit, 8bit, binary, quoted-printable, base16, base32, and base64
+//     case '7bit': return /^[\x00-\x7F]+$/.test(value); // 0-127 (ascii)
+//     case '8bit': return /^[\x00-\xFF]+$/.test(value); // 0-255 (extended ascii)
+//     case 'binary': return /^[\x00-\xFF]+$/.test(value); // 0-255
+//     case 'quoted-printable': return /^[\x09\x20-\x3C\x3E-\x7E]+$/.test(value); // 9, 32-60, 62-126
+//     case 'base16': return /^[0-9a-fA-F]+$/.test(value); // 0-9, a-f, A-F
+//     case 'base32': return /^[0-9a-vA-V]+$/.test(value); // 0-9, a-v, A-V
+//     case 'base64': return /^[0-9a-zA-Z+/=]+$/.test(value); // 0-9, a-z, A-Z, +, /
+// }
