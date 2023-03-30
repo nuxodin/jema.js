@@ -49,7 +49,17 @@ for (const [file, data] of Object.entries(tests)) {
                     console.log('------------------------', file, '------------------------');
                     console.log(subtest.description);
 
-                    const errors = [...schema.errors(subtest.data)];
+                    const errors = [];
+                    for (const error of schema.errors(subtest.data)) {
+                        errors.push({
+                            message: error,
+                            schemaPath: schema.schemaStack.join("/"),
+                            dataPath: schema.dataStack.join("/"),
+                        });
+                    }
+
+
+                    //const errors = [...schema.errors(subtest.data)];
                     const result = errors.length === 0;
 
                     if (result !== subtest.valid) {

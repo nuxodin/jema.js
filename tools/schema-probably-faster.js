@@ -6,18 +6,11 @@ const refKey = Symbol('ref');
 const defaultLocation = window?.location?.href || 'http://localhost/'; // OK? TODO?
 let currentSchema = null;
 
-let schemaStack = null;
-let dataStack = null;
-
 // AllSchemas is a global map of all loaded schemas
 export const AllSchemas = new Map();
 function loadSchema(url) {
     if (!AllSchemas.has(url)) {
         const promise = fetch(url).then(res => res.json()).then(async data => {
-
-            if (data.$id && data.$id !== url) console.warn('Schema id does not match url', data.$id, url);
-            data.$id = url;
-
             const schema = new Schema(data);
             await schema.deref();
             return schema;
@@ -30,9 +23,6 @@ function loadSchema(url) {
 
 export class Schema {
     constructor(schema){
-
-        if (typeof schema ==='object') schema.$schema ??= 'https://json-schema.org/draft/2020-12/schema';
-
         this.schema = schema;
         this.id = schema.$id;
 
@@ -41,19 +31,11 @@ export class Schema {
 
         this.#findAnchors(this.schema);
     }
-
-    async schemaErrors() {
-        const meta = await loadSchema(this.schema.$schema);
-        return meta.errors(this.schema);
-    }
-
     validate(value) {
         return !this.error(value);
     }
     *errors (value){
         currentSchema = this;
-        this.schemaStack = schemaStack = [];
-        this.dataStack = dataStack = [];
         return yield* errors(value, this.schema);
     }
     error(value) {
@@ -113,17 +95,17 @@ export class Schema {
         for (const sub of subSchemas(schema)) this.#deref(sub);
     }
 
-    #loadRefs(schema, basis) {
-        if (schema.$id) basis = schema.$id;
+    #loadRefs(schema) {
+        //if (schema.$id && schema.$id !== this.id) return;
         const refs = new Map();
-        if (schema.$ref && !schema[refKey]) {
+        if (schema.$ref && !schema[refKey]) { // not already dereferenced
             if (schema.$ref[0] !== '#') {
-                const url = new URL(schema.$ref, basis).href.split('#')[0];
+                const {url} = this.relativeUrl(schema.$ref);
                 refs.set(url, loadSchema(url));
             }
         }
         for (const sub of subSchemas(schema)) {
-            this.#loadRefs(sub, basis).forEach((value, key) => refs.set(key, value));
+            this.#loadRefs(sub).forEach((value, key) => refs.set(key, value));
         }
         return refs;
     }
@@ -153,9 +135,11 @@ export class Schema {
     }
 }
 
+
+
 function *subSchemas(schema) {
     for (const [prop, value] of Object.entries(schema)) {
-        const has = vocabulary[prop]?.subSchema;
+        const has = hasSubSchema[prop];
         if (has === 'object') for (const sub of Object.values(value)) yield sub;
         if (has === 'array') for (const sub of value) yield sub;
         if (has === true) yield value;
@@ -163,12 +147,11 @@ function *subSchemas(schema) {
 }
 
 
-
-const evaluatedFor = new WeakMap();
+const unevaluatedPropertiesFor = new WeakMap();
 let stopCollectingEvaluated = false; // for inside "not"
 
 export function *errors (value, schema){
-    if (schema === false) { yield schemaError(value, false, 'fails, false-schema at:'); return; }
+    if (schema === false) { yield 'Schema is false'; return; }
     if (schema === true) return;
     if (typeof schema !== 'object') { console.error('Schema is not an object'); return; }
 
@@ -176,123 +159,183 @@ export function *errors (value, schema){
     if (value === null) type = 'null';
     if (Array.isArray(value)) type = 'array';
 
-    const unevaluatedName = unevaluatedNames[type];
-
-    if (unevaluatedName in schema) {
-        if (!evaluatedFor.has(value)) evaluatedFor.set(value, new Set());
+    if (type === 'object' && 'unevaluatedProperties' in schema) {
+        if (!unevaluatedPropertiesFor.has(value)) {
+            unevaluatedPropertiesFor.set(value, new Set(Object.keys(value)));
+        }
+    }
+    if (type === 'array' && 'unevaluatedItems' in schema) {
+        if (!unevaluatedPropertiesFor.has(value)) {
+            // array to map (index to key) so we can remove evaluated items, do we only need a set of indexes?
+            const map = new Map(value.map((obj, i) => [i, obj]));
+            unevaluatedPropertiesFor.set(value, map);
+        }
     }
 
     for (const prop of Object.keys(schema)) {
-        const vocal = vocabulary[prop];
-        if (!vocal) continue;
-        if (vocal.affects && vocal.affects !== type) continue;
-        const validator = vocal?.valid;
+        const validator = validators[prop];
         if (!validator) continue;
-
-        schemaStack.push(prop);
+        if (relevantFor[prop] && relevantFor[prop] !== type) continue;
 
         if (validator instanceof GeneratorFunction) {
             yield* validator(schema[prop], value, schema);
         } else {
             if (!validator(schema[prop], value, schema)) {
-                yield schemaError(value, schema[prop]);
+                yield `"${value}" does not match ${prop}:${schema[prop]}`; // value to sting can fail
             }
         }
-        schemaStack.pop();
     }
+
     if (typeValidators[type]) {
         yield* typeValidators[type](schema, value);
     }
 
-    if (unevaluatedName in schema) {
-        const evaluated = evaluatedFor.get(value);
-        if (evaluated) {
-            const keys = type === 'object' ? Object.keys(value) : value.keys();
-            for (const key of keys) {
-                if (evaluated.has(key)) continue;
-                yield* errors(value[key], schema[unevaluatedName]);
-            }
-            evaluatedFor.delete(value);
+    if (type === 'object' && 'unevaluatedProperties' in schema) {
+        for (const prop of unevaluatedPropertiesFor.get(value) || []) {
+            yield* errors(value[prop], schema.unevaluatedProperties);
         }
+        unevaluatedPropertiesFor.delete(value);
+    }
+    if (type === 'array' && 'unevaluatedItems' in schema) {
+        for (const [,item] of unevaluatedPropertiesFor.get(value) || []) {
+            yield* errors(item, schema.unevaluatedItems);
+        }
+        unevaluatedPropertiesFor.delete(value);
     }
 
 }
 
-const unevaluatedNames = {
-    object:'unevaluatedProperties',
-    array:'unevaluatedItems',
+
+
+const hasSubSchema = {
+    $defs: 'object',
+
+    if: true,
+    then: true,
+    else: true,
+    allOf: 'array',
+    anyOf: 'array',
+    oneOf: 'array',
+    not: true,
+
+    items: true,
+    additionalItems: true,
+    contains: true,
+    prefixItems: 'array',
+    unevaluatedItems: true,
+
+    properties: 'object',
+    required: true,
+    additionalProperties: true,
+    propertyNames: true,
+    dependentSchemas: true,
+    dependentRequired: true,
+    unevaluatedProperties: true,
+    patternProperties: true,
 }
+
+const relevantFor = {
+    multipleOf: 'number', // integer is also a number
+    minimum: 'number',
+    maximum: 'number',
+    exclusiveMinimum: 'number',
+    exclusiveMaximum: 'number',
+    minLength: 'string',
+    maxLength: 'string',
+    pattern: 'string',
+    format: 'string',
+    contentEncoding: 'string',
+}
+
 
 const typeValidators = {
     *object(schema, value) {
+        const keys = Object.keys(value);
+
+        if ('minProperties' in schema) {
+            if (keys.length < schema.minProperties) yield "Object has less properties than minProperties";
+        }
+        if ('maxProperties' in schema) {
+            if (keys.length > schema.maxProperties) yield "Object has more properties than maxProperties";
+        }
+        if ('required' in schema) {
+            for (const prop of schema.required) {
+                if (!keys.includes(prop)) yield `Object is missing required property "${prop}"`;
+            }
+        }
+        if ('dependentRequired' in schema) {
+            for (const [prop, required] of Object.entries(schema.dependentRequired)) {
+                if (keys.includes(prop)) {
+                    for (const req of required) {
+                        if (!keys.includes(req)) yield `Object is missing required property "${req}" (dependent on "${prop}")`;
+                    }
+                }
+            }
+        }
+        if ('dependentSchemas' in schema) {
+            for (const [prop, subSchema] of Object.entries(schema.dependentSchemas)) {
+                if (keys.includes(prop)) {
+                    yield* errors(value, subSchema);
+                }
+            }
+        }
 
         const properties = schema.properties;
         const patternProperties = schema.patternProperties && Object.entries(schema.patternProperties);
+        const propertyNames = schema.propertyNames;
         const additionalProperties = schema.additionalProperties;
 
-        for (const [prop, item] of Object.entries(value)) {
+        for (const prop of keys) {
 
-            dataStack.push(prop);
+            if (propertyNames != null) yield* errors(prop, propertyNames);
 
             let additional = true;
 
             const propSchema = properties?.[prop];
             if (propSchema != null) {
-
-                schemaStack.push('properties');
-                schemaStack.push(prop);
-
-                yield* errors(item, propSchema);
-
-                schemaStack.pop();
-                schemaStack.pop();
-
+                yield* errors(value[prop], propSchema);
                 additional = false;
             }
             if (patternProperties) {
-
-                schemaStack.push('patternProperties');
-                schemaStack.push(prop);
-
-                for (const [pattern, sub] of patternProperties) {
+                for (const [pattern, subSchema] of patternProperties) {
                     if (new RegExp(pattern,'u').test(prop)) {
-                        yield* errors(item, sub);
+                        yield* errors(value[prop], subSchema);
                         additional = false;
                     }
                 }
-
-                schemaStack.pop();
-                schemaStack.pop();
-
             }
             if (additionalProperties != null && additional) {
-
-                schemaStack.push('additionalProperties');
-                schemaStack.pop();
-
-                yield* errors(item, additionalProperties);
-
-                schemaStack.pop();
-                schemaStack.pop();
-
+                yield* errors(value[prop], additionalProperties);
                 additional = false;
             }
             if (!additional && !stopCollectingEvaluated) {
-                evaluatedFor.get(value)?.add(prop);
+                unevaluatedPropertiesFor.get(value)?.delete(prop);
             }
-
-            dataStack.pop();
-
         }
 
     },
     *array(schema, value) {
 
+        if ('minItems' in schema) {
+            if (value.length < schema.minItems) yield "less array-items than minItems";
+        }
+        if ('maxItems' in schema) {
+            if (value.length > schema.maxItems) yield "more array-items than maxItems";
+        }
+
+        const uniqueSet = schema.uniqueItems && new Set();
+
         let numContains = 0;
+        const minContains = schema.minContains ?? 1;
+        const maxContains = schema.maxContains ?? Infinity;
 
         for (const [i, item] of value.entries()) {
 
-            dataStack.push(i);
+            if (schema.uniqueItems) {
+                const uniqueValue = uniqueValueIgnoreKeyOrder(item);
+                if (uniqueSet.has(uniqueValue)) yield "Array has duplicate items";
+                uniqueSet.add(uniqueValue);
+            }
 
             let additional = true;
 
@@ -301,13 +344,7 @@ const typeValidators = {
                 additional = false;
             } else {
                 if (schema.items != null) {
-
-                    for (const error of errors(item, schema.items)) {
-                        evaluatedFor.get(value)?.clear(); // if items fail, all items are unevaluated, seams a hacky solution
-                        yield error;
-                    }
-                    // yield* errors(item, schema.items);
-                    // evaluatedFor.get(value)?.clear();
+                    yield* errors(item, schema.items);
                     additional = false;
                 }
             }
@@ -317,21 +354,17 @@ const typeValidators = {
                 if (match) {
                     numContains++;
                     additional = false;
-                }
+                } // TODO: early exits?
             }
 
             if (!additional) {
                 if (!stopCollectingEvaluated) {
-                    evaluatedFor.get(value)?.add(i);
+                    unevaluatedPropertiesFor.get(value)?.delete(i);
                 }
             }
-
-            dataStack.pop();
         }
 
         if (schema.contains != null) {
-            const minContains = schema.minContains ?? 1;
-            const maxContains = schema.maxContains ?? Infinity;
             if (numContains < minContains) yield 'Array contains too few items that match "contains"';
             if (numContains > maxContains) yield 'Array contains too many items that match "contains"';
         }
@@ -339,356 +372,133 @@ const typeValidators = {
 
 }
 
-const vocabulary = {
-    $schema: {},
-    $vocabulary: {},
-    $id: {},
-    $anchor: {},
-    $dynamicAnchor: {},
-    $ref: {
-        *valid(url, value, schema) {
-            const refSchema = schema[refKey];
-            if (refSchema == null) console.error('dynamicRef: no schema found, deref() called?', url);
-            return yield* errors(value, schema[refKey]);
+
+const validators = {
+
+    // meta data
+    // title() {},
+    // description() {},
+    // default() {},
+    // readOnly() {},
+    // deprecated(deprecated, value, schema) {
+    //     if (deprecated) console.error("deprecated (value: " + value + "))", schema);
+    //     return true;
+    // },
+    // writeOnly() {},
+    // examples() {},
+
+    *$ref(url, value, schema) {
+        const refSchema = schema[refKey];
+        if (refSchema == null) console.error('dynamicRef: no schema found, deref() called?', url);
+        return yield* errors(value, schema[refKey]);
+    },
+    *$dynamicRef(url, value, schema) {
+        const dynSchema = currentSchema.walk(url, {dynamic:true});
+        const subSchema = dynSchema || schema[refKey];
+        if (subSchema == null) console.error('dynamicRef: no schema found, deref() called?', url, currentSchema);
+        return yield* errors(value, subSchema);
+    },
+    enum(allowed, value){
+        for (const a of allowed) if (deepEqual(a, value)) return true;
+    },
+    const(constant, value){
+        return deepEqual(value, constant);
+    },
+    type(type, value){
+        if (Array.isArray(type)) {
+            for (const t of type) if (validators.type(t, value)) return true;
+            return;
         }
-    },
-    $dynamicRef: {
-        *valid(url, value, schema) {
-            const dynSchema = currentSchema.walk(url, {dynamic:true});
-            const subSchema = dynSchema || schema[refKey];
-            if (subSchema == null) console.error('dynamicRef: no schema found, deref() called?', url, currentSchema);
-            return yield* errors(value, subSchema);
-        }
-    },
-    // $recursiveRef: {}, Draft 2019-09
-    // $recursiveAnchor: {},
-    // $comment: {},
-
-    $defs: {
-        subSchema: 'object',
-    },
-
-
-    // combinators
-    allOf: {
-        *valid(allOf, value) {
-            for (const [i, sub] of allOf.entries()) {
-                schemaStack.push(i);
-                yield* errors(value, sub);
-                schemaStack.pop();
-            }
-        },
-        subSchema: 'array',
-    },
-    anyOf: {
-        valid(anyOf, value) {
-            const collecting = evaluatedFor.has(value);
-            let any = false;
-            for (const sub of anyOf) {
-                const ok = errors(value, sub).next().done; // is it intentional to stop evaluating on first match?
-                if (ok) {
-                    if (!collecting) return true;
-                    any = true;
-                }
-            }
-            return any;
-        },
-        subSchema: 'array',
-    },
-    oneOf: {
-        valid(oneOf, value) {
-            let pass = 0;
-            for (const subSchema of oneOf) {
-                pass += errors(value, subSchema).next().done ? 1 : 0; // is it intentional to stop evaluating on first match?
-                if (pass > 1) return false;
-            }
-            return pass === 1;
-        },
-        subSchema: 'array',
-    },
-    not: {
-        valid(subSchema, value) {
-            stopCollectingEvaluated = true;
-            const ok = errors(value, subSchema).next().done;
-            schemaStack.pop();
-            stopCollectingEvaluated = false;
-            return !ok;
-        },
-        subSchema: true,
-    },
-    if: {
-        *valid(ifSchema, value, schema) {
-            const ok = errors(value, ifSchema).next().done;
-            schemaStack.pop();
-            if (ok) {
-                schemaStack.push('then');
-                if (schema.then != null) yield* errors(value, schema.then);
-            } else {
-                schemaStack.push('else');
-                if (schema.else != null) yield* errors(value, schema.else);
-            }
-            schemaStack.pop();
-        },
-        subSchema: true,
-    },
-    then: {
-        subSchema: true,
-    },
-    else: {
-        subSchema: true,
+        if (type === 'integer' && Number.isInteger(value)) return true;
+        if (type === 'number'  && typeof value === 'number' && isFinite(value)) return true;
+        if (type === 'boolean' && typeof value === 'boolean') return true;
+        if (type === 'string'  && typeof value === 'string') return true;
+        if (type === 'array'   && Array.isArray(value)) return true;
+        if (type === 'object'  && typeof value === 'object' && value !== null && !Array.isArray(value)) return true;
+        if (type === 'null'    && value == null) return true;
     },
 
+    // number
+    multipleOf(mOf, value){
+        if (Number.isInteger(value) && Number.isInteger(1 / mOf)) return true;
+        if (Number.isInteger(value / mOf)) return true;
+    },
+    minimum: (min,value) => value >= min,
+    maximum: (max, value) => value <= max,
+    exclusiveMinimum: (min, value) => value > min,
+    exclusiveMaximum: (max, value) => value < max,
 
-    // vocabulary
-    type: {
-        valid(type, value) {
-            if (Array.isArray(type)) {
-                for (const t of type) if (vocabulary.type.valid(t, value)) return true;
-                return;
-            }
-            if (type === 'integer' && Number.isInteger(value)) return true;
-            if (type === 'number'  && typeof value === 'number' && isFinite(value)) return true;
-            if (type === 'boolean' && typeof value === 'boolean') return true;
-            if (type === 'string'  && typeof value === 'string') return true;
-            if (type === 'array'   && Array.isArray(value)) return true;
-            if (type === 'object'  && typeof value === 'object' && value !== null && !Array.isArray(value)) return true;
-            if (type === 'null'    && value == null) return true;
+    // string
+    minLength: (minLen, value) => [...value].length >= minLen,
+    maxLength: (maxLen, value) => [...value].length <= maxLen,
+    pattern: (pattern, value) => new RegExp(pattern,'u').test(value),
+    format(format, value){
+        switch (format) {
+            case 'date-time': return validDateTime(value);
+            case 'date': return validDate(value);
+            case 'time': return validTime(value);
+            case 'duration': return parseDuration(value);
+            case 'email':
+            case 'idn-email': return isValidEmail(value, format==='idn-email');
+            case 'ipv4': return isValidIPv4(value);
+            case 'ipv6': return isValidIPv6(value);
+            case 'uri':
+            case 'iri': try { new URL(value); return true; } catch { return false; }
+            case 'uri-reference':
+            case 'iri-reference': try { new URL(value, 'http://x.y'); return true; } catch { return false; }
+            case 'uri-template': return /^([^\{\}]|\{[^\{\}]+\})*$/.test(value);
+            case 'hostname': return isValidHostname(value);
+            case 'idn-hostname': return isValidIdnHostname(value);
+            case 'uuid': return /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
+            case 'json-pointer': return /^(?:\/(?:[^~/]|~0|~1)*)*$/.test(value);
+            case 'relative-json-pointer': return /^(?:0|[1-9][0-9]*)(?:#|(?:\/(?:[^~/]|~0|~1)*)*)$/.test(value);
+            case 'regex': try { new RegExp(value, 'u'); return true; } catch { return false; }
+            default: console.warn('json schema unknown format: '+format);
         }
-    },
-    enum: {
-        valid(allowed, value) {
-            for (const a of allowed) if (deepEqual(a, value)) return true;
-        }
-    },
-    const: {
-        valid(constant, value) {
-            return deepEqual(constant, value);
-        }
-    },
-    multipleOf: {
-        valid(mOf, value) {
-            if (Number.isInteger(value) && Number.isInteger(1 / mOf)) return true;
-            if (Number.isInteger(value / mOf)) return true;
-        },
-        affects:'number'
-    },
-    maximum: {
-        valid: (max, value) => value <= max,
-        affects:'number'
-    },
-    exclusiveMaximum: {
-        valid: (max, value) => value < max,
-        affects:'number'
-    },
-    minimum: {
-        valid: (min, value) => value >= min,
-        affects:'number'
-    },
-    exclusiveMinimum: {
-        valid: (min, value) => value > min,
-        affects:'number'
-    },
-    maxLength: {
-        valid: (max, value) => [...value].length <= max,
-        affects:'string'
-    },
-    minLength: {
-        valid: (min, value) => [...value].length >= min,
-        affects:'string'
-    },
-    pattern: {
-        valid: (pattern, value) => new RegExp(pattern,'u').test(value),
-        affects:'string'
-    },
-    format: {
-        valid: (format, value) => {
-            switch (format) {
-                case 'date-time': return validDateTime(value);
-                case 'date': return validDate(value);
-                case 'time': return validTime(value);
-                case 'duration': return parseDuration(value);
-                case 'email':
-                case 'idn-email': return isValidEmail(value, format==='idn-email');
-                case 'ipv4': return isValidIPv4(value);
-                case 'ipv6': return isValidIPv6(value);
-                case 'uri':
-                case 'iri': try { new URL(value); return true; } catch { return false; }
-                case 'uri-reference':
-                case 'iri-reference': try { new URL(value, 'http://x.y'); return true; } catch { return false; }
-                case 'uri-template': return /^([^\{\}]|\{[^\{\}]+\})*$/.test(value);
-                case 'hostname': return isValidHostname(value);
-                case 'idn-hostname': return isValidIdnHostname(value);
-                case 'uuid': return /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
-                case 'json-pointer': return /^(?:\/(?:[^~/]|~0|~1)*)*$/.test(value);
-                case 'relative-json-pointer': return /^(?:0|[1-9][0-9]*)(?:#|(?:\/(?:[^~/]|~0|~1)*)*)$/.test(value);
-                case 'regex': try { new RegExp(value, 'u'); return true; } catch { return false; }
-            }
-            console.warn('json schema unknown format: '+format);
-            return true;
-        },
-        affects:'string'
-    },
-    maxItems: {
-        valid: (max, value) => value.length <= max,
-        affects:'array'
-    },
-    minItems: {
-        valid: (min, value) => value.length >= min,
-        affects:'array'
+        return true;
     },
     // contentEncoding() {},
     // contentMediaType () {},
     // contentSchema () {},
 
-    // array
-    uniqueItems: {
-        valid: (unique, value) => {
-            if (!unique) return true;
-            const seen = new Set();
-            for (const [i, item] of value.entries()) {
-
-                const uniqueValue = uniqueValueIgnoreKeyOrder(item);
-                if (seen.has(uniqueValue)) {
-                    return false;
-                }
-                seen.add(uniqueValue);
-
-            }
-
-            return true;
-        },
-        affects:'array'
+    // combinators
+    *allOf(allOf, value) {
+        for (const subSchema of allOf) yield* errors(value, subSchema);
     },
-    items: {
-        subSchema: true,
-    },
-    additionalItems: {
-        subSchema: true,
-    },
-    contains: {
-        subSchema: true,
-    },
-    prefixItems: {
-        subSchema: 'array',
-    },
-    unevaluatedItems: {
-        subSchema: true,
-    },
-
-
-    // object
-    properties: {
-        subSchema: 'object',
-    },
-    additionalProperties: {
-        subSchema: true,
-    },
-    unevaluatedProperties: {
-        subSchema: true,
-    },
-    patternProperties: {
-        subSchema: true,
-    },
-
-    maxProperties: {
-        valid: (max, value) => Object.keys(value).length <= max,
-        affects:'object'
-    },
-    minProperties: {
-        valid: (min, value) => Object.keys(value).length >= min,
-        affects:'object'
-    },
-    required: {
-        *valid(required, value) {
-            for (const [i, prop] of required.entries()) {
-                if (!Object.hasOwn(value, prop)) {
-                    schemaStack.push(i);
-                    yield schemaError(value, prop, 'missing required property');
-                    //yield "missing required property: "+prop;
-                    schemaStack.pop();
-                }
-            }
-        },
-        affects:'object',
-        subSchema: true
-    },
-    dependentRequired: {
-        valid: (dependentRequired, value) => {
-            for (const [prop, required] of Object.entries(dependentRequired)) {
-                if (Object.hasOwn(value, prop)) {
-                    for (const req of required) {
-                        if (!Object.hasOwn(value, req)) return false;
-                    }
-                }
-            }
-            return true;
-        },
-        affects:'object'
-    },
-    dependentSchemas: {
-        *valid(dependentSchemas, value) {
-            for (const [prop, subSchema] of Object.entries(dependentSchemas)) {
-                if (Object.hasOwn(value, prop)) {
-                    yield* errors(value, subSchema);
-                }
-            }
-        },
-        affects:'object',
-        subSchema: true
-    },
-    dependencies: {
-        *valid(dependencies, value) {
-            for (const [prop, dep] of Object.entries(dependencies)) {
-                if (Object.hasOwn(value, prop)) {
-                    if (Array.isArray(dep)) {
-                        for (const req of dep) {
-                            if (!Object.hasOwn(value, req)) {
-                                yield schemaError(value, req, 'missing required property');
-                            }
-                        }
-                    } else {
-                        yield* errors(value, dep);
-                    }
-                }
+    anyOf(anyOf, value) {
+        const collecting = unevaluatedPropertiesFor.has(value);
+        let any = false;
+        for (const subSchema of anyOf) {
+            const ok = errors(value, subSchema).next().done; // is it intentional to stop evaluating on first match?
+            if (ok) {
+                if (!collecting) return true;
+                any = true;
             }
         }
+        return any;
     },
-    propertyNames: {
-        *valid(propertyNames, value) {
-            for (const prop of Object.keys(value)) {
-                yield* errors(prop, propertyNames);
-            }
-        },
-        affects:'object',
-        subSchema: true
+    oneOf(oneOf, value) {
+        let pass = 0;
+        for (const subSchema of oneOf) {
+            pass += errors(value, subSchema).next().done ? 1 : 0; // is it intentional to stop evaluating on first match?
+            if (pass > 1) return false;
+        }
+        return pass === 1;
     },
-
-
-    // $comment
-    // title {},
-    // description {},
-    // default{},
-    // readOnly{},
-    // deprecated(deprecated, value, schema) {
-    //     if (deprecated) console.error("deprecated (value: " + value + "))", schema);
-    //     return true;
-    // },
-    // writeOnly{},
-    // examples{},
-
-}
-
-function schemaError(value, schemaValue, message='does not match'){
-    const printValue = Array.isArray(value) ? 'array' : (typeof value === 'object') ? 'object' : '"'+value+'"';
-    return {
-        message: `${printValue} ${message} ${schemaStack.at(-1)}:${schemaValue}`,
-        value,
-        schemaValue,
-        schemaStack: [...schemaStack],
-        dataStack: [...dataStack],
-    }
-}
-
+    not(subSchema, value) {
+        stopCollectingEvaluated = true;
+        const ok = errors(value, subSchema).next().done;
+        stopCollectingEvaluated = false;
+        return !ok;
+    },
+    *if(ifSchema, value, schema) {
+        if (errors(value, ifSchema).next().done) {
+            if (schema.then != null) yield* errors(value, schema.then);
+        } else {
+            if (schema.else != null) yield* errors(value, schema.else);
+        }
+    },
+};
 
 /* format validation functions */
 function validDate(value) {

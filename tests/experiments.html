@@ -9,64 +9,59 @@
 
 
 <script type=module>
-import {Schema} from '../schema.js';
+import {Schema, AllSchemas} from '../schema.js';
 import {dump} from 'https://cdn.jsdelivr.net/gh/nuxodin/dump.js@main/mod.min.js';
 //import {dump} from '../../dump.js/mod.js';
 
 
+
+
 const s1 = new Schema({
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$id": "https://test.json-schema.org/dynamic-ref-with-multiple-paths/main",
-            "$defs": {
-                "inner": {
-                    "$id": "inner",
-                    "$dynamicAnchor": "foo",
-                    "title": "inner",
-                    "additionalProperties": {
-                        "$dynamicRef": "#foo"
-                    }
-                }
-            },
-            "if": {
-                "propertyNames": {
-                    "pattern": "^[a-m]"
-                }
-            },
-            "then": {
-                "title": "any type of node",
-                "$id": "anyLeafNode",
-                "$dynamicAnchor": "foo",
-                "$ref": "inner"
-            },
-            "else": {
-                "title": "integer node",
-                "$id": "integerNode",
-                "$dynamicAnchor": "foo",
-                "type": [ "object", "integer" ],
-                "$ref": "inner"
-            }
-        });
+    properties: {
+        name: {
+            type: 'string',
+            minLength: 3,
+        },
+        age: {
+            type: 'number',
+        },
+    }
+});
 
-const data = { "november": 1.1 };
+const schemaErrors = await s1.schemaErrors();
+
+console.log([...schemaErrors])
+
+
+const data = {name: 'Li', age: '3'};
 
 
 
 
 
 
-dataOut.innerHTML = dump(data, {depth: 10, inherited: true, symbols: true });
+dataOut.innerHTML = dump(data, {depth: 13, inherited: true, symbols: true });
 
 await s1.deref();
 
-schemaOut.innerHTML = dump(s1, {depth: 10, inherited: true, symbols: true });
+schemaOut.innerHTML = dump(s1, {depth: 13, inherited: true, symbols: true });
 
+// const errors = [];
+// for (const error of s1.errors(data)) {
+//     errors.push({
+//         message: error,
+//         schemaPath: s1.schemaStack.join("/"),
+//         dataPath: s1.dataStack.join("/"),
+//     })
+// }
+console.log([...s1.errors(data)])
 const errors = [...s1.errors(data)];
 
-errorsOut.innerHTML = dump(errors, {depth: 10, inherited: true, symbols: true });
+errorsOut.innerHTML = dump(errors, {depth: 13, inherited: true, symbols: true });
 
 for (const [key, schema] of AllSchemas) {
   const foraign = await schema;
-  allSchemas.innerHTML += dump(foraign, {depth: 10, inherited: true, symbols: true });
+  allSchemas.innerHTML += dump(foraign, {depth: 13, inherited: true, symbols: true });
 }
 
 

@@ -1,6 +1,4 @@
-import {Schema} from '../schema.js';
-
-const files = [
+let files = [
     'additionalProperties.json',
     'allOf.json',
     'anchor.json',
@@ -52,7 +50,7 @@ const files = [
 
     // 'optional/bignum.json',
     // //'optional/cross-draft.json',
-    // //'optional/dependencies-compatibility.json',
+    // 'optional/dependencies-compatibility.json',
     // 'optional/ecmascript-regex.json',
     // 'optional/float-overflow.json',
     // 'optional/format-assertion.json',
@@ -80,8 +78,14 @@ const files = [
     // 'optional/format/uri-reference.json',
     // 'optional/format/uri-template.json',
     // 'optional/format/uuid.json',
-
 ];
+
+/* *
+files = [
+    'dynamicRef.json',
+];
+/* */
+
 
 const promises = new Map();
 
