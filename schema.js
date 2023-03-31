@@ -170,11 +170,8 @@ let stopCollectingEvaluated = false; // for inside "not"
 export function *errors (value, schema){
     if (schema === false) { yield schemaError(value, false, 'fails, false-schema at:'); return; }
     if (schema === true) return;
-    if (typeof schema !== 'object') { console.error('Schema is not an object'); return; }
 
-    let type = typeof value;
-    if (value === null) type = 'null';
-    if (Array.isArray(value)) type = 'array';
+    const type = getType(value);
 
     const unevaluatedName = unevaluatedNames[type];
 
@@ -184,8 +181,7 @@ export function *errors (value, schema){
 
     for (const prop of Object.keys(schema)) {
         const vocal = vocabulary[prop];
-        if (!vocal) continue;
-        if (vocal.affects && vocal.affects !== type) continue;
+        if (!vocal || (vocal.affects && vocal.affects !== type)) continue;
         const validator = vocal?.valid;
         if (!validator) continue;
 
@@ -200,9 +196,7 @@ export function *errors (value, schema){
         }
         schemaStack.pop();
     }
-    if (typeValidators[type]) {
-        yield* typeValidators[type](schema, value);
-    }
+    if (typeValidators[type]) yield* typeValidators[type](schema, value);
 
     if (unevaluatedName in schema) {
         const evaluated = evaluatedFor.get(value);
@@ -216,11 +210,6 @@ export function *errors (value, schema){
         }
     }
 
-}
-
-const unevaluatedNames = {
-    object:'unevaluatedProperties',
-    array:'unevaluatedItems',
 }
 
 const typeValidators = {
@@ -446,13 +435,9 @@ const vocabulary = {
                 for (const t of type) if (vocabulary.type.valid(t, value)) return true;
                 return;
             }
-            if (type === 'integer' && Number.isInteger(value)) return true;
-            if (type === 'number'  && typeof value === 'number' && isFinite(value)) return true;
-            if (type === 'boolean' && typeof value === 'boolean') return true;
-            if (type === 'string'  && typeof value === 'string') return true;
-            if (type === 'array'   && Array.isArray(value)) return true;
-            if (type === 'object'  && typeof value === 'object' && value !== null && !Array.isArray(value)) return true;
-            if (type === 'null'    && value == null) return true;
+            const isType = getType(value);
+            if (isType === type) return true;
+            if (type === 'integer' && isType === 'number' && Number.isInteger(value)) return true;
         }
     },
     enum: {
@@ -545,16 +530,11 @@ const vocabulary = {
         valid: (unique, value) => {
             if (!unique) return true;
             const seen = new Set();
-            for (const [i, item] of value.entries()) {
-
+            for (const item of value) {
                 const uniqueValue = uniqueValueIgnoreKeyOrder(item);
-                if (seen.has(uniqueValue)) {
-                    return false;
-                }
+                if (seen.has(uniqueValue)) return false;
                 seen.add(uniqueValue);
-
             }
-
             return true;
         },
         affects:'array'
@@ -574,8 +554,6 @@ const vocabulary = {
     unevaluatedItems: {
         subSchema: true,
     },
-
-
     // object
     properties: {
         subSchema: 'object',
@@ -589,7 +567,6 @@ const vocabulary = {
     patternProperties: {
         subSchema: true,
     },
-
     maxProperties: {
         valid: (max, value) => Object.keys(value).length <= max,
         affects:'object'
@@ -663,7 +640,6 @@ const vocabulary = {
         subSchema: true
     },
 
-
     // $comment
     // title {},
     // description {},
@@ -675,7 +651,6 @@ const vocabulary = {
     // },
     // writeOnly{},
     // examples{},
-
 }
 
 function schemaError(value, schemaValue, message='does not match'){
@@ -687,6 +662,20 @@ function schemaError(value, schemaValue, message='does not match'){
         schemaStack: [...schemaStack],
         dataStack: [...dataStack],
     }
+}
+
+
+function getType(value){
+    if (value === null) return 'null';
+    const type = typeof value;
+    if (type === 'number' && !isFinite(value)) return 'not supported';
+    if (type === 'object' && Array.isArray(value)) return 'array';
+    return type;
+}
+
+const unevaluatedNames = {
+    object:'unevaluatedProperties',
+    array:'unevaluatedItems',
 }
 
 
