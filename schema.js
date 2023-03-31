@@ -29,33 +29,55 @@ function loadSchema(url) {
 
 
 export class Schema {
+
+    /**
+     * Creates a new Schema instance.
+     * @param {object|boolean} schema - The JSON schema object.
+     */
     constructor(schema){
-
         if (typeof schema ==='object') schema.$schema ??= 'https://json-schema.org/draft/2020-12/schema';
-
         this.schema = schema;
         this.id = schema.$id;
-
         this.anchors = new Map([['', this.schema]]); // including itself as "#"
         this.dynAnchors = new Map();
-
         this.#findAnchors(this.schema);
     }
 
+    /**
+     * Checks the schema for errors. (against the defined meta $schema)
+     * @returns {Promise<Array>} A promise that resolves to an array of errors.
+     */
     async schemaErrors() {
         const meta = await loadSchema(this.schema.$schema);
         return meta.errors(this.schema);
     }
 
+    /**
+     * Validates the value against the schema.
+     * @param {*} value - The value to validate.
+     * @returns {boolean} True if the value is valid, false otherwise.
+     */
     validate(value) {
         return !this.error(value);
     }
+
+    /**
+     * Yields errors for the given value.
+     * @param {*} value - The value to check for errors.
+     * @returns {Generator} A generator that yields errors.
+     */
     *errors (value){
         currentSchema = this;
         this.schemaStack = schemaStack = [];
         this.dataStack = dataStack = [];
         return yield* errors(value, this.schema);
     }
+
+    /**
+     * Returns the first error for the given value.
+     * @param {*} value - The value to check for an error.
+     * @returns {object|boolean} The first error or false if no errors are found.
+     */
     error(value) {
         return this.errors(value).next().value??false;
     }
@@ -167,7 +189,7 @@ function *subSchemas(schema) {
 const evaluatedFor = new WeakMap();
 let stopCollectingEvaluated = false; // for inside "not"
 
-export function *errors (value, schema){
+function *errors (value, schema){
     if (schema === false) { yield schemaError(value, false, 'fails, false-schema at:'); return; }
     if (schema === true) return;
 
@@ -228,8 +250,7 @@ const typeValidators = {
             const propSchema = properties?.[prop];
             if (propSchema != null) {
 
-                schemaStack.push('properties');
-                schemaStack.push(prop);
+                schemaStack.push('properties', prop);
 
                 yield* errors(item, propSchema);
 
@@ -240,8 +261,7 @@ const typeValidators = {
             }
             if (patternProperties) {
 
-                schemaStack.push('patternProperties');
-                schemaStack.push(prop);
+                schemaStack.push('patternProperties', prop);
 
                 for (const [pattern, sub] of patternProperties) {
                     if (new RegExp(pattern,'u').test(prop)) {
@@ -257,11 +277,9 @@ const typeValidators = {
             if (additionalProperties != null && additional) {
 
                 schemaStack.push('additionalProperties');
-                schemaStack.pop();
 
                 yield* errors(item, additionalProperties);
 
-                schemaStack.pop();
                 schemaStack.pop();
 
                 additional = false;
@@ -727,37 +745,36 @@ function isValidHostname(hostname) {
     }
     return true;
 }
+
+
+
 function isValidIdnHostname(hostname) {
-    try { new URL('http://' + hostname); }
-    catch { return false; }
-    const lableFails = hostname.split('.').some(x => {
-        if (x.length > 63) return true;
-        if (x.substring(2, 4) === '--') return true;
-    })
-    if (lableFails) return false;
-    // Hebrew GERSHAYIM not preceded by anything
-    if (hostname.match(/(?<!.)\u05F4/)) return false;
-    //Hebrew GERESH not preceded by Hebrew
-    if (hostname.match(/(?<![\p{Script=Hebrew}])\u05F3/u)) return false;
-    // Greek KERAIA not followed by anything
-    //if (hostname.match(/\u0375(?!.)/)) return false;
-    // Greek KERAIA not followed by Greek
-    if (hostname.match(/\u0375(?![\p{Script=Greek}])/u)) return false;
-    if (hostname.includes('\u302E')) return false;
-    if (hostname.startsWith('-')) return false;
-    if (hostname.endsWith('-')) return false;
-    if (hostname === '・') return false;
-    if (hostname.includes('・')) {
-        if (!/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(hostname)) {
-           return false;
+    try { new URL('http://' + hostname); } catch { return false; }
+    return !hostname.split('.').some((label) => {
+        if (label.length > 63) return true;
+        if (label.substring(2, 4) === '--') return true;
+        if (label.startsWith('-') || label.endsWith('-')) return true;
+        // Hebrew GERSHAYIM not preceded by anything
+        if (label.match(/(?<!.)\u05F4/)) return true;
+        // Hebrew GERESH not preceded by Hebrew
+        if (label.match(/(?<![\p{Script=Hebrew}])\u05F3/u)) return true;
+        // Greek KERAIA not followed by Greek
+        if (label.match(/\u0375(?![\p{Script=Greek}])/u)) return true;
+        // Hangul Tone Mark
+        if (label.includes('\u302E')) return true;
+        // Japanese middle dot
+        if (label.includes('・')) {
+            if (!/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(label)) {
+                return true;
+            }
         }
-    }
-    if (hostname.includes('·')) {
-        if (!/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(hostname)) {
-           return false;
+        // Interpunct (middle dot)
+        if (label.includes('·')) {
+            if (!/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(label)) {
+                return true;
+            }
         }
-    }
-    return true;
+    });
 }
 function isValidIPv4(ip) {
     return /^((?!0\d)\d{1,3}\.){3}(?!0\d)\d{1,3}$/.test(ip) && ip.split('.').every(p => p >= 0 && p <= 255);
