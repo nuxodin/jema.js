@@ -349,8 +349,6 @@ const vocabulary = {
             return yield* errors(value, subSchema);
         }
     },
-    // $recursiveRef: {}, Draft 2019-09
-    // $recursiveAnchor: {},
     // $comment: {},
 
     $defs: {
@@ -640,7 +638,6 @@ const vocabulary = {
         subSchema: true
     },
 
-    // $comment
     // title {},
     // description {},
     // default{},
