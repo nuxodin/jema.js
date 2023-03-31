@@ -31,11 +31,6 @@ describe('api', () => {
         const schema = new Schema({ type: 'number', minimum: 3});
         chai.expect( schema.validate('s') ).to.be.equal(false);
     });
-    it('schema.error()', () => {
-        const schema = new Schema({ type: 'integer', minimum: 3});
-        chai.expect( schema.error(3.3) ).to.be.an('string');
-        chai.expect( schema.error(3) ).to.be.equal(false);
-    });
     it('schema.errors()', () => {
         const schema = new Schema({ type: 'integer', minimum: 3});
         chai.expect( [...schema.errors(2.5)].length ).to.be.equal(2);

@@ -14,7 +14,6 @@ export const AllSchemas = new Map();
 function loadSchema(url) {
     if (!AllSchemas.has(url)) {
         const promise = fetch(url).then(res => res.json()).then(async data => {
-
             if (data.$id && data.$id !== url) console.warn('Schema id does not match url', data.$id, url);
             data.$id = url;
 
@@ -58,7 +57,7 @@ export class Schema {
      * @returns {boolean} True if the value is valid, false otherwise.
      */
     validate(value) {
-        return !this.error(value);
+        return !this.error(value).next().done;
     }
 
     /**
@@ -71,15 +70,6 @@ export class Schema {
         this.schemaStack = schemaStack = [];
         this.dataStack = dataStack = [];
         return yield* errors(value, this.schema);
-    }
-
-    /**
-     * Returns the first error for the given value.
-     * @param {*} value - The value to check for an error.
-     * @returns {object|boolean} The first error or false if no errors are found.
-     */
-    error(value) {
-        return this.errors(value).next().value??false;
     }
 
     #findAnchors(schema) {
@@ -745,36 +735,30 @@ function isValidHostname(hostname) {
     }
     return true;
 }
-
-
-
 function isValidIdnHostname(hostname) {
     try { new URL('http://' + hostname); } catch { return false; }
-    return !hostname.split('.').some((label) => {
-        if (label.length > 63) return true;
-        if (label.substring(2, 4) === '--') return true;
-        if (label.startsWith('-') || label.endsWith('-')) return true;
+    for (let label of hostname.split('.')) {
+        label = label.toLowerCase();
+
+        if (label.length > 63) return false;
+        if (label.substring(2, 4) === '--') return false;
+        if (label.startsWith('-') || label.endsWith('-')) return false;
         // Hebrew GERSHAYIM not preceded by anything
-        if (label.match(/(?<!.)\u05F4/)) return true;
+        if (label.match(/(?<!.)\u05F4/)) return false;
         // Hebrew GERESH not preceded by Hebrew
-        if (label.match(/(?<![\p{Script=Hebrew}])\u05F3/u)) return true;
+        if (label.match(/(?<![\p{Script=Hebrew}])\u05F3/u)) return false;
         // Greek KERAIA not followed by Greek
-        if (label.match(/\u0375(?![\p{Script=Greek}])/u)) return true;
+        if (label.match(/\u0375(?![\p{Script=Greek}])/u)) return false;
         // Hangul Tone Mark
-        if (label.includes('\u302E')) return true;
-        // Japanese middle dot
-        if (label.includes('・')) {
+        if (label.includes('\u302E')) return false;
+        // Japanese middle dot and Interpunct (middle dot) only allowed when other Hiragana, Katakana or Han characters are present
+        if (label.includes('・') || label.includes('·')) {
             if (!/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(label)) {
-                return true;
+                return false;
             }
         }
-        // Interpunct (middle dot)
-        if (label.includes('·')) {
-            if (!/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(label)) {
-                return true;
-            }
-        }
-    });
+    }
+    return true;
 }
 function isValidIPv4(ip) {
     return /^((?!0\d)\d{1,3}\.){3}(?!0\d)\d{1,3}$/.test(ip) && ip.split('.').every(p => p >= 0 && p <= 255);

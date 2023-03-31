@@ -82,7 +82,7 @@ let files = [
 
 /* *
 files = [
-    'dynamicRef.json',
+    //'dynamicRef.json',
 ];
 /* */
 
