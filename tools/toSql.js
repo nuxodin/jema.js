@@ -61,7 +61,7 @@ export function toFieldDefinition(schema) {
     // produces somethin like the following from a jsonschema
     // eg. "INT(11) NOT NULL AUTO_INCREMENT COMMENT 'A comment'"
     // or "VARCHAR(255) NOT NULL DEFAULT '' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT 'A comment'"
-    let sql = '';
+
     let type = mapType[schema.type];
     let unsigned = false;
 
@@ -73,6 +73,8 @@ export function toFieldDefinition(schema) {
         schema.minimum ??= 0;
         schema.maximum ??= 4294967295;
     }
+
+    if (schema.type === 'boolean') schema.maxLength = 1;
 
     if (schema.type === 'integer') {
         const minimum = schema.minimum ?? -Infinity;
@@ -105,18 +107,20 @@ export function toFieldDefinition(schema) {
         if (schema.format === 'date-time') type = 'datetime';
     }
 
-    sql += type.toUpperCase();
+    let sql = type.toUpperCase();
     if (unsigned) sql += ' UNSIGNED';
     if (schema.maxLength) sql += '('+(schema.maxLength*4)+')'; // TODO: *4 for utf8mb4
     if (schema.required) sql += ' NOT NULL';
     if (schema.x_autoincrement) sql += ' AUTO_INCREMENT';
     //if (schema.x_primary) sql += ' PRIMARY KEY';
-    if (schema.default) sql += ' DEFAULT '+schema.default;
+
+    if (schema.default != null) sql += " DEFAULT '"+quote(schema.default)+"'";
 
     if (schema.contentEncoding === '7bit') sql += ' CHARACTER SET ascii';
     if (schema.contentEncoding === '8bit') sql += ' CHARACTER SET ascii';
 
     //if (schema.x_collate) sql += ' COLLATE '+schema.x_collate;
+
     if (schema.$comment) sql += ' COMMENT "'+schema.title+'"';
     return sql;
 }
@@ -142,7 +146,9 @@ const intTypesSize = {
     int: 4294967295,
     bigint: 18446744073709551615,
 };
-
+function quote(str) {
+    return str.replace(/'/g, "''");
+}
 
 
 /* just for test */
@@ -172,116 +178,3 @@ function toFieldsSQL(schema) {
     }
     return sql;
 }
-/*
-*/
-
-
-/*
-// how its done in php:
-
-$data['type']          = $data['type']          ?? 'varchar';
-$data['length']        = $data['length']        ?? false;
-$data['special']       = $data['special']       ?? '';
-$data['collate']       = $data['collate']       ?? false;
-$data['null']          = $data['null']          ?? false;
-$data['autoincrement'] = $data['autoincrement'] ?? false;
-$data['default']       = $data['default']       ?? false;
-
-$data['type']    = trim(strtoupper($data['type']));
-$data['special'] = trim(strtoupper($data['special']));
-
-$vs = ['VARCHAR','TINYINT','TEXT','DATE','SMALLINT','MEDIUMINT','INT','BIGINT','FLOAT','DOUBLE','DECIMAL','DATETIME','TIMESTAMP','TIME','YEAR','CHAR','TINYBLOB','TINYTEXT','BLOB','MEDIUMBLOB','MEDIUMTEXT','LONGBLOB','LONGTEXT','BOOL','BINARY'];
-if (array_search($data['type'], $vs) === false) throw new \Exception('field type "'.$data['type'].'" not allowed');
-
-$vs = ['','BINARY','UNSIGNED','UNSIGNED ZEROFILL','ON UPDATE CURRENT_TIMESTAMP'];
-if (array_search($data['special'], $vs) === false) throw new \Exception('field special "'.$data['special'].'" not allowed');
-
-$length = $data['length'] ? '('.$data['length'].')' : '';
-
-if (in_array($data['type'], ['DATE','DATETIME','FLOAT','TEXT','TINYTEXT','MEDIUMTEXT','LONGTEXT'])) $length = '';
-if ($data['type'] === 'VARCHAR' && !$length)             $length = '(191)';
-if ($data['type'] === 'DECIMAL' && $data['length'] > 65) $length = '(12,8)';
-
-//$default = $data['autoincrement'] ? 'AUTO_INCREMENT' : ($data['default'] ? "DEFAULT ".D()->quote($data['default']) : ""); // todo: bad: D() is used
-
-$default = '';
-$defaultKeys = ['NULL'=>1, 'CURRENT_TIMESTAMP'=>1, 'CURRENT_TIMESTAMP()'=>1, 'NOW()'=>1, 'LOCALTIME'=>1, 'LOCALTIME()'=>1, 'LOCALTIMESTAMP'=>1, 'LOCALTIMESTAMP()'=>1];
-if ($data['autoincrement']) {
-    $default = 'AUTO_INCREMENT';
-} elseif($data['default'] !== false) {
-    $default = "DEFAULT ".(isset($defaultKeys[$data['default']]) ? $data['default'] : D()->quote($data['default'])); // todo: bad: D() is used
-}
-
-if (dbField::$numTypes[$data['type']]??0) $data['collate'] = false;
-if (dbField::$dateTypes[$data['type']]??0) $data['collate'] = false;
-$collate = '';
-if ($data['collate']) {
-    $characterSet = explode('_',$data['collate'])[0];
-    $collate = "CHARACTER SET ".$characterSet." COLLATE ".$data['collate']." "; // todo: bad: D() is used
-}
-
-// ALTER TABLE `file` CHANGE `text` `text` VARCHAR(22222) CHARACTER SET swe7 COLLATE swe7_swedish_ci NULL DEFAULT 'x';
-$str = " ".$data['type'].$length." ".$data['special']." ".$collate." ".($data['null']?'NULL':'NOT NULL')." ".$default;
-return $str;
-*/
-
-
-
-/*
-
-// from DB to schema
-
-const indexTranslate = {
-    PRI: 'primariy',
-    UNI: 'unique',
-    MUL: true,
-}
-const typeTranslate = {
-    'tinyint':'int8',
-    'smallint':'int16',
-    'int':'int32',
-    'bigint':'int64',
-    'varchar':'string',
-    'text':'string',
-    'tinytext':'string',
-}
-export async function schemaFromDb(db) {
-    var all = await db.query("SELECT * FROM information_schema.`TABLES` WHERE TABLE_SCHEMA = '"+db.conn.config.db+"' ");
-    let schema = {
-        properties:{},
-        name:db.conn.config.db,
-    };
-    for (let dbTable of all) {
-        let tableSchema = schema.properties[dbTable.TABLE_NAME] = {};
-        tableSchema.properties = {};
-        tableSchema.name = dbTable.TABLE_NAME;
-        tableSchema.defaults = {
-            charset: dbTable.TABLE_COLLATION.replace(/_.+/,''),
-        };
-
-        let fields = await db.query("SELECT * FROM information_schema.COLUMNS WHERE table_schema = '"+db.conn.config.db+"' AND table_name = '"+dbTable.TABLE_NAME+"' ORDER BY ORDINAL_POSITION");
-        tableSchema.properties = {};
-        for (let dbField of fields) {
-            tableSchema.properties[dbField.COLUMN_NAME] = information_schema_columns_entry_to_schema(dbField);
-        }
-    }
-    return schema;
-}
-
-function information_schema_columns_entry_to_schema(dbField) {
-    let unsigned = dbField.COLUMN_TYPE.match(/ unsigned/,'') ? 'u':'';
-    let type = unsigned+typeTranslate[ dbField.DATA_TYPE ];
-    type = type[0].toUpperCase() + type.slice(1);
-    let length = parseInt(dbField.CHARACTER_MAXIMUM_LENGTH);
-    return {
-        name:     dbField.COLUMN_NAME,
-        type,
-        length,
-        required: dbField.IS_NULLABLE === 'NO' ? true: false,
-        index:    indexTranslate[dbField.COLUMN_KEY],
-        default:  dbField.COLUMN_DEFAULT,
-        extra:    dbField.EXTRA,
-        charset:  dbField.CHARACTER_SET_NAME,
-    }
-}
-*/
