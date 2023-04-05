@@ -110,6 +110,7 @@ export function toFieldDefinition(schema) {
     if (schema.maxLength) sql += '('+(schema.maxLength*4)+')'; // TODO: *4 for utf8mb4
     if (schema.required) sql += ' NOT NULL';
     if (schema.x_autoincrement) sql += ' AUTO_INCREMENT';
+    //if (schema.x_primary) sql += ' PRIMARY KEY';
     if (schema.default) sql += ' DEFAULT '+schema.default;
 
     if (schema.contentEncoding === '7bit') sql += ' CHARACTER SET ascii';
