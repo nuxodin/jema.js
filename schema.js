@@ -144,7 +144,10 @@ export class Schema {
         if (ref[0] !== '#') { // walk an other schema
             const {url, hash} = this.relativeUrl(ref);
             const foraignSchema = this.foraignSchemas.get(url);
-            if (!foraignSchema) console.warn('foraignSchema not found', url, ref);
+            if (!foraignSchema) {
+                console.warn('foraignSchema not found', url, ref);
+                return undefined;
+            }
             return foraignSchema.walk(hash);
         }
         const [anchor, ...path] = ref.substring(1).split('/');
@@ -493,6 +496,7 @@ const vocabulary = {
     },
     format: {
         valid: (format, value) => {
+return true;
             switch (format) {
                 case 'date-time': return validDateTime(value);
                 case 'date': return validDate(value);
@@ -809,11 +813,18 @@ function walk(schema, parts) {
     let subSchema = schema;
     for (let part of parts) {
         part = part.replace(/~1/g, '/').replace(/~0/g, '~').replace(/%25/g, '%').replace(/%22/g, '"');
-        subSchema = subSchema[part];
-        if (subSchema == null) {
-            const msg = 'path "' + parts.join('/') + '" not found in schema (at part "' + part + '")';
-            console.warn(msg, schema);
+
+        if (!(part in subSchema)) {
+            console.warn(`path '${parts.join('/')}' not found in schema`, schema);
+            return undefined; // oder wirf einen Fehler
         }
+        
+        subSchema = subSchema[part];
+
+        // if (subSchema == null) { zzz
+        //     const msg = 'path "' + parts.join('/') + '" not found in schema (at part "' + part + '")';
+        //     console.warn(msg, schema);
+        // }
     }
     return subSchema;
 }
