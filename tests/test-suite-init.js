@@ -113,7 +113,8 @@ await Promise.all(promises.values()).then( (result) => {
                         reqursiveRewriteUrls(schema[key]);
                     }
                     if (typeof schema[key] === 'string') {
-                        schema[key] = schema[key].replace('http://localhost:1234', 'https://cdn.jsdelivr.net/gh/nuxodin/JSON-Schema-Test-Suite@2.0.1/remotes');
+                        //schema[key] = schema[key].replace('http://localhost:1234', 'https://cdn.jsdelivr.net/gh/nuxodin/JSON-Schema-Test-Suite@2.0.1/remotes');
+                        schema[key] = schema[key].replace('http://localhost:1234', 'https://cdn.jsdelivr.net/gh/nuxodin/JSON-Schema-Test-Suite@main/remotes');
                     }
                 }
             }
