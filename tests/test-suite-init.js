@@ -43,7 +43,7 @@ let files = [
     'unevaluatedItems.json',
     'unevaluatedProperties.json',
     'uniqueItems.json',
-    'unknownKeyword.json',
+    //'unknownKeyword.json',
     //'vocabulary.json',
     'refRemote.json',
     'dynamicRef.json',

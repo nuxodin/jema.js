@@ -57,7 +57,7 @@ export class Schema {
      * @returns {boolean} True if the value is valid, false otherwise.
      */
     validate(value) {
-        return !this.error(value).next().done;
+        return this.errors(value).next().done; // if first "done" is true, no errors
     }
 
     /**
@@ -461,8 +461,9 @@ const vocabulary = {
     },
     multipleOf: {
         valid(mOf, value) {
-            if (Number.isInteger(value) && Number.isInteger(1 / mOf)) return true;
-            if (Number.isInteger(value / mOf)) return true;
+            if ( Number.isInteger(value) && Number.isInteger(1 / mOf) ) return true;
+            if ( Number.isInteger( +(value / mOf).toPrecision(15) ) ) return true;
+            //if (Number.isInteger(value / mOf)) return true; // old zzz
         },
         affects:'number'
     },
@@ -675,7 +676,7 @@ function schemaError(value, schemaValue, message='does not match'){
 
 
 function getType(value){
-    if (value === null) return 'null';
+    if (value == null) return 'null';
     const type = typeof value;
     if (type === 'number' && !isFinite(value)) return 'not supported';
     if (type === 'object' && Array.isArray(value)) return 'array';

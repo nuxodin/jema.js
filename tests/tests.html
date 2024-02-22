@@ -12,10 +12,8 @@
 
 <div id="mocha"></div>
 
-<!--script src="https://unpkg.com/chai/chai.js"></script>
-<script src="https://unpkg.com/mocha/mocha.js"></script-->
-<script src="https://cdn.jsdelivr.net/npm/chai/chai.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mocha/mocha.min.js"></script>
+<script src="https://unpkg.com/chai@4.4.1/chai.js"></script>
+<script src="https://unpkg.com/mocha@10.2.0/mocha.js"></script>
 
 <script class="mocha-init">
     mocha.setup('bdd');
@@ -57,6 +55,11 @@ describe('validate "type"', () => {
     it('is integer', () => {
         const schema = new Schema({ type: 'integer' });
         chai.expect( schema.validate(3) ).to.be.equal(true);
+    });
+
+    it('is integer -8599.3', () => {
+        const schema = new Schema({ 'multipleOf':0.01 });
+        chai.expect( schema.validate(-8599.3) ).to.be.equal(true);
     });
 
     it('is not integer', () => {
