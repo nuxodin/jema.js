@@ -1,7 +1,7 @@
 # jema.js
 JSON Schema validator for ***deno*** and ***browsers***
 
-| JSON Schema is the leading standard for validating and describing data. It is platform-independent and simplifies the automation of validation, documentation, and processing of data.
+JSON Schema is the leading standard for validating and describing data. It is platform-independent and simplifies the automation of validation, documentation, and processing of data.
 
 ## Features
 
