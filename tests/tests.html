@@ -62,6 +62,11 @@ describe('validate "type"', () => {
         chai.expect( schema.validate(-8599.3) ).to.be.equal(true);
     });
 
+    it('1+EPSILON not a multiple of 0.5', () => {
+        const schema = new Schema({ 'multipleOf': 0.5 });
+        chai.expect( schema.validate(1 + Number.EPSILON) ).to.be.equal(false);
+    });
+
     it('is not integer', () => {
         const schema = new Schema({ type: 'integer' });
         chai.expect( schema.validate(3.1) ).to.be.equal(false);

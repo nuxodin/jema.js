@@ -461,9 +461,8 @@ const vocabulary = {
     },
     multipleOf: {
         valid(mOf, value) {
-            if ( Number.isInteger(value) && Number.isInteger(1 / mOf) ) return true;
-            if ( Number.isInteger( +(value / mOf).toPrecision(15) ) ) return true;
-            //if (Number.isInteger(value / mOf)) return true; // old zzz
+            const q = value / mOf
+            return Number.isFinite(q) && q * mOf === Math.round(q) * mOf
         },
         affects:'number'
     },
