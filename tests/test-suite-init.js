@@ -15,7 +15,7 @@ let files = [
     'exclusiveMaximum.json',
     'exclusiveMinimum.json',
     'format.json',
-    'id.json',
+    'optional/id.json',
     'if-then-else.json',
     'infinite-loop-detection.json',
     'items.json',
