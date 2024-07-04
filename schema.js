@@ -348,7 +348,7 @@ const vocabulary = {
     $ref: {
         *valid(url, value, schema) {
             const refSchema = schema[refKey];
-            if (refSchema == null) console.error('dynamicRef: no schema found, deref() called?', url);
+            if (refSchema == null) console.error('ref: no schema found, deref() called?', url);
             return yield* errors(value, schema[refKey]);
         }
     },
