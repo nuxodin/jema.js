@@ -348,7 +348,7 @@ const vocabulary = {
     $ref: {
         *valid(url, value, schema) {
             const refSchema = schema[refKey];
-            if (refSchema == null) console.error('ref: no schema found, deref() called?', url);
+            if (refSchema == null) console.error('$ref: no schema found, deref() called?', url);
             return yield* errors(value, schema[refKey]);
         }
     },
@@ -356,7 +356,7 @@ const vocabulary = {
         *valid(url, value, schema) {
             const dynSchema = currentSchema.walk(url, {dynamic:true});
             const subSchema = dynSchema || schema[refKey];
-            if (subSchema == null) console.error('dynamicRef: no schema found, deref() called?', url, currentSchema);
+            if (subSchema == null) console.error('$dynamicRef: no schema found, deref() called?', url, currentSchema);
             return yield* errors(value, subSchema);
         }
     },
