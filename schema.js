@@ -3,7 +3,7 @@
 // https://json-schema.org/draft/2020-12/json-schema-core.html#section-7.7.1.1
 
 const refKey = Symbol('ref');
-const defaultLocation = window?.location?.href || 'http://localhost/'; // OK? TODO?
+const defaultLocation = (typeof windows === 'undefined' ? false : window?.location?.href) || 'http://localhost/'; // OK? TODO?
 let currentSchema = null;
 
 let schemaStack = null;
